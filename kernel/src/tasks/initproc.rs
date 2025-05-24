@@ -181,7 +181,7 @@ pub async fn initproc() {
         home_dir.clone(),
     )
     .await;*/
-    /*  command(
+     command(
             "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
             home_dir.clone(),
         )
@@ -206,7 +206,7 @@ pub async fn initproc() {
         // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
         // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
-    */
+    
     //command("/musl/busybox sh basic_testcode.sh", home_dir.clone()).await;
 
     // command("/musl/busybox sh", home_dir.clone()).await;
