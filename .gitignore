@@ -6,6 +6,7 @@ riscv64-linux-musl-cross.tgz
 kernel-la
 kernel-rv
 sdcard-rv.img
+sdcard-la.img
 Makefile.local
 byteos
 byteos.yaml
