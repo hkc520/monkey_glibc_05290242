@@ -156,4 +156,52 @@ impl UserTaskContainer {
         // use it temporarily
         Ok(0)
     }
+
+    pub async fn sys_get_robust_list(  
+        &self,  
+        pid: i32,  
+        head_ptr: usize,  
+        len_ptr: usize,  
+    ) -> SysResult {  
+        warn!("SYS_GET_ROBUST_LIST pid: {}, head_ptr: {:#x}, len_ptr: {:#x}", pid, head_ptr, len_ptr);  
+        
+        // 验证地址是否在合理范围内  
+        if head_ptr != 0 {  
+            // 检查地址是否在用户空间范围内  
+            if head_ptr >= 0x8000_0000_0000_0000 {  
+                warn!("Invalid head_ptr address: {:#x}", head_ptr);  
+                return Err(Errno::EFAULT);  
+            }  
+            
+            let head_addr = VirtAddr::from(head_ptr);  
+            if let Some((paddr, _)) = self.task.page_table.translate(head_addr) {  
+                unsafe {  
+                    paddr.get_mut_ptr::<usize>().write(0);  
+                }  
+            } else {  
+                warn!("Failed to translate head_ptr address: {:#x}", head_ptr);  
+                return Err(Errno::EFAULT);  
+            }  
+        }  
+        
+        // 验证长度指针地址  
+        if len_ptr != 0 {  
+            if len_ptr >= 0x8000_0000_0000_0000 {  
+                warn!("Invalid len_ptr address: {:#x}", len_ptr);  
+                return Err(Errno::EFAULT);  
+            }  
+            
+            let len_addr = VirtAddr::from(len_ptr);  
+            if let Some((paddr, _)) = self.task.page_table.translate(len_addr) {  
+                unsafe {  
+                    paddr.get_mut_ptr::<usize>().write(0);  
+                }  
+            } else {  
+                warn!("Failed to translate len_ptr address: {:#x}", len_ptr);  
+                return Err(Errno::EFAULT);  
+            }  
+        }  
+        
+        Ok(0)  
+    }
 }

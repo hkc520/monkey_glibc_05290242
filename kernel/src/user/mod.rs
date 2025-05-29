@@ -1,3 +1,4 @@
+use fs::Stat;
 use crate::tasks::UserTaskControlFlow;  
 use crate::tasks::{MapTrack, MemType, UserTask};  
 use crate::utils::hexdump;  
@@ -93,10 +94,47 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
         }  
         // 新增：处理低地址区域（如 0x10690）  
         else if vaddr.raw() >= 0x10000 && vaddr.raw() < 0x100000 {  
-            warn!("Attempting to allocate CodeSection for vaddr: {:#x}", vaddr.raw());  
+            warn!("Attempting to handle CodeSection page fault for vaddr: {:#x}", vaddr.raw());  
+            
+            // 首先尝试从ELF文件加载  
+            if let Some((file, file_offset, _)) = task.get_elf_segment_for_addr(vaddr) {  
+                warn!("Loading code from ELF file at offset: {:#x}", file_offset);  
+                
+                // 分配页面  
+                let page_count = 1;  
+                if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count) {  
+                    // 获取文件大小  
+                    let mut stat = Stat::default();  
+                    let file_size = if file.stat(&mut stat).is_ok() {  
+                        stat.size as usize  
+                    } else {  
+                        PAGE_SIZE // 如果无法获取文件大小，使用页面大小作为默认值  
+                    };  
+                    
+                    // 从文件读取内容到页面  
+                    let page_data = ppn.slice_mut_with_len(PAGE_SIZE);  
+                    let read_size = if file_offset < file_size {  
+                        core::cmp::min(PAGE_SIZE, file_size - file_offset)  
+                    } else {  
+                        0  
+                    };  
+                    
+                    if read_size > 0 {  
+                        if let Ok(_) = file.readat(file_offset, &mut page_data[..read_size]) {  
+                            warn!("Successfully loaded code from ELF for vaddr: {:#x}", vaddr.raw());  
+                            return;  
+                        } else {  
+                            warn!("Failed to read from ELF file for vaddr: {:#x}", vaddr.raw());  
+                        }  
+                    }  
+                }  
+            }  
+            
+            // 如果无法从ELF加载，则使用原有的空白页面分配逻辑  
+            warn!("Falling back to blank page allocation for vaddr: {:#x}", vaddr.raw());  
             let page_count = 1;  
             if let Some(_) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count) {  
-                warn!("Successfully allocated CodeSection for vaddr: {:#x}", vaddr.raw());  
+                warn!("Successfully allocated blank CodeSection for vaddr: {:#x}", vaddr.raw());  
                 return;  
             } else {  
                 warn!("Failed to allocate CodeSection for vaddr: {:#x}", vaddr.raw());  

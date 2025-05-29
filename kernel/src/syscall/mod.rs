@@ -196,9 +196,8 @@ impl UserTaskContainer {
             Sysno::tkill => self.sys_tkill(args[0] as _, args[1] as _).await,
             Sysno::rt_sigreturn => self.sys_sigreturn().await,
             Sysno::get_robust_list => {
-                warn!("SYS_GET_ROBUST_LIST @ ");
-                Ok(0)
-            } // always ok for now
+                self.sys_get_robust_list(args[0] as _, args[1] as _, args[2] as _).await
+            }
             Sysno::ppoll => {
                 self.sys_ppoll(args[0].into(), args[1] as _, args[2].into(), args[3] as _)
                     .await

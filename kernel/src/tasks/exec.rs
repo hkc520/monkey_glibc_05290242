@@ -271,6 +271,17 @@ pub async fn exec_with_process(
                 let offset = ph.offset() as usize;  
                 let virt_addr = base + ph.virtual_addr() as usize;  
                 let vpn = virt_addr / PAGE_SIZE;  
+
+                // // 确保创建对应的内存区域，包含文件信息  
+                // let area = MemArea {  
+                //     start: virt_addr,  
+                //     len: mem_size,  
+                //     offset: offset,  
+                //     file: Some(file.get_bare_file()), // 关键：保存文件引用  
+                //     mtype: MemType::CodeSection,  
+                //     mtrackers: Vec::new(),  
+                // };  
+                // user_task.pcb.lock().memset.push(area);
   
                 let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;  
                 let ppn_start =  

@@ -483,6 +483,19 @@ impl UserTask {
             Ok(parent.path_buf().join(filename))
         }
     }
+
+    pub fn get_elf_segment_for_addr(&self, vaddr: VirtAddr) -> Option<(Arc<dyn INodeInterface>, usize, usize)> {  
+        let pcb = self.pcb.lock();  
+        // 查找包含该地址的内存区域  
+        for area in pcb.memset.iter() {  
+            if area.contains(vaddr.raw()) && area.file.is_some() {  
+                let file = area.file.as_ref().unwrap();  
+                let offset = vaddr.raw() - area.start + area.offset;  
+                return Some((file.clone(), offset, area.len));  
+            }  
+        }  
+        None  
+    }
 }
 
 impl AsyncTask for UserTask {
