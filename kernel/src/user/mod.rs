@@ -25,15 +25,24 @@ pub struct UserTaskContainer {
 /// Copy on write.  
 /// call this function when trigger store/instruction page fault.  
 /// copy page or remap page.  
-pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr) {  
-    warn!(  
-        "store/instruction page fault @ {:#x} vaddr: {} paddr: {:?} task_id: {}",  
-        cx_ref[TrapFrameArgs::SEPC],  
-        vaddr,  
-        task.page_table.translate(vaddr),  
-        task.get_task_id()  
-    );  
-    let mut pcb = task.pcb.lock();  
+pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr) {
+    warn!(
+        "store/instruction page fault @ {:#x} vaddr: {} paddr: {:?} task_id: {}",
+        cx_ref[TrapFrameArgs::SEPC],
+        vaddr,
+        task.page_table.translate(vaddr),
+        task.get_task_id()
+    );
+
+    // 详细输出内存区域信息
+    warn!("=== Memory areas debug info ===");
+    let mut pcb = task.pcb.lock();
+    for (i, area) in pcb.memset.iter().enumerate() {
+        warn!("  Area {}: start={:#x}, end={:#x}, len={:#x}, offset={:#x}, type={:?}, has_file={}", 
+            i, area.start, area.start + area.len, area.len, area.offset, area.mtype, area.file.is_some());
+    }
+    warn!("=== End debug info ===");
+    //let mut pcb = task.pcb.lock();  
     let area = pcb.memset.iter_mut().find(|x| x.contains(vaddr.raw()));  
     if let Some(area) = area {  
         let finded = area.mtrackers.iter_mut().find(|x| x.vaddr == vaddr.floor());  
@@ -117,7 +126,39 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                 }  
             }
             // 尝试从ELF文件加载  
-            if let Some((file, file_offset, _)) = task.get_elf_segment_for_addr(vaddr) {  
+            let elf_lookup_task = if task.task_id != task.process_id {
+                // 这是一个线程，需要通过进程ID查找主进程
+                // 由于我们没有全局进程表，这里使用共享PCB的方式
+                task.clone() // PCB已经是共享的，所以应该能看到相同的memset
+            } else {
+                task.clone()
+            };
+            
+            // 添加详细的调试信息
+            warn!("Before get_elf_segment_for_addr: task_id={}, process_id={}, PCB arc count={}", 
+                elf_lookup_task.task_id, elf_lookup_task.process_id, Arc::strong_count(&elf_lookup_task.pcb));
+
+            // 再次检查memset状态
+            {
+                let pcb_guard = elf_lookup_task.pcb.lock();
+                warn!("PCB memset size before lookup: {}", pcb_guard.memset.len());
+                if pcb_guard.memset.is_empty() {
+                    warn!("CRITICAL: memset is empty before get_elf_segment_for_addr!");
+                    warn!("PCB address: {:p}", &*pcb_guard);
+                    // 打印线程列表状态
+                    warn!("Active threads count: {}", pcb_guard.threads.len());
+                    for (i, thread_ref) in pcb_guard.threads.iter().enumerate() {
+                        if let Some(thread) = thread_ref.upgrade() {
+                            warn!("  Thread {}: task_id={}, process_id={}", 
+                                i, thread.task_id, thread.process_id);
+                        } else {
+                            warn!("  Thread {}: dead reference", i);
+                        }
+                    }
+                }
+                drop(pcb_guard);
+            }
+            if let Some((file, file_offset, _)) = elf_lookup_task.get_elf_segment_for_addr(vaddr)  {  
                 warn!("Loading code from ELF file at offset: {:#x}", file_offset);  
                 
                 // 获取文件大小  

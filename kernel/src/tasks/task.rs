@@ -260,12 +260,37 @@ impl UserTask {
         let exit_signal = tcb_writer.exit_signal;
         drop(tcb_writer);
 
-        // recycle memory resouces if the pcb just used by this thread
-        if Arc::strong_count(&self.pcb) == 1 {
-            self.pcb.lock().memset.clear();
-            self.pcb.lock().fd_table.clear();
-            self.pcb.lock().children.clear();
-            self.pcb.lock().exit_code = Some(exit_code);
+        // 改进的线程退出逻辑 - 不应该直接清理进程资源
+        let should_cleanup_process = {
+            let mut pcb = self.pcb.lock();
+            
+            // 清理线程列表
+            pcb.threads.retain(|weak_ref| {
+                if let Some(thread) = weak_ref.upgrade() {
+                    thread.task_id != self.task_id  // 移除当前退出的线程
+                } else {
+                    false  // 移除已经释放的弱引用
+                }
+            });
+            
+            let remaining_threads = pcb.threads.len();
+            let is_main_thread = self.task_id == self.process_id;
+            let pcb_ref_count = Arc::strong_count(&self.pcb);
+            
+            warn!("Thread exit: task_id={}, process_id={}, is_main_thread={}, remaining_threads={}, pcb_refs={}", 
+                self.task_id, self.process_id, is_main_thread, remaining_threads, pcb_ref_count);
+            
+            // 只有在特定条件下才清理进程资源
+            (is_main_thread && remaining_threads == 0) || pcb_ref_count <= 1
+        };
+
+        if should_cleanup_process {
+            warn!("Thread exit triggering process cleanup for process_id={}", self.process_id);
+            let mut pcb = self.pcb.lock();
+            pcb.memset.clear();
+            pcb.fd_table.clear();
+            pcb.children.clear();
+            pcb.exit_code = Some(exit_code);
 
             if let Some(parent) = self.parent.read().upgrade() {
                 if exit_signal != 0 {
@@ -278,15 +303,8 @@ impl UserTask {
                     parent.tcb.write().signal.add_signal(SignalFlags::SIGCHLD);
                 }
             }
-        }
-
-        // If this is not the main thread, Just exit immediately, don't store any resources.
-        if self.task_id != self.process_id {
-            self.pcb
-                .lock()
-                .children
-                .retain(|x| x.task_id != self.task_id);
-            self.release();
+        } else {
+            warn!("Thread exit: task_id={} exited, but process continues", self.task_id);
         }
     }
 
@@ -338,14 +356,9 @@ impl UserTask {
 
     #[inline]
     pub fn thread_clone(self: Arc<Self>) -> Arc<Self> {
-        // Give the frame_tracker in the memset a type.
-        // it will contains the frame used for page mapping、
-        // mmap or text section.
-        // and then we can implement COW(copy on write).
         let parent_tcb = self.tcb.read();
-
         let task_id = task_id_alloc();
-        let mut pcb = self.pcb.lock();
+        
         let tcb = RwLock::new(ThreadControlBlock {
             cx: parent_tcb.cx.clone(),
             sigmask: parent_tcb.sigmask.clone(),
@@ -363,13 +376,24 @@ impl UserTask {
         let new_task = Arc::new(Self {
             page_table: self.page_table.clone(),
             task_id,
-            process_id: self.task_id,
+            process_id: self.process_id,  // 重要：保持相同的process_id
             parent: RwLock::new(self.parent.read().clone()),
-            pcb: self.pcb.clone(),
+            pcb: self.pcb.clone(),       // 重要：共享PCB
             tcb,
         });
-        pcb.threads.push(Arc::downgrade(&new_task));
-        // pcb.children.push(new_task.clone());
+
+        // 维护线程列表
+        {
+            let mut pcb = self.pcb.lock();
+            // 清理死亡的线程引用
+            pcb.threads.retain(|weak_ref| weak_ref.strong_count() > 0);
+            // 添加新线程
+            pcb.threads.push(Arc::downgrade(&new_task));
+            
+            warn!("Thread created: task_id={}, process_id={}, total_active_threads={}", 
+                new_task.task_id, new_task.process_id, pcb.threads.len());
+        }
+
         new_task
     }
 
@@ -487,25 +511,30 @@ impl UserTask {
     pub fn get_elf_segment_for_addr(&self, vaddr: VirtAddr) -> Option<(Arc<dyn INodeInterface>, usize, usize)> {  
         let pcb = self.pcb.lock();  
         
+        warn!("get_elf_segment_for_addr: task_id={}, process_id={}, searching for vaddr={:#x}", 
+            self.task_id, self.process_id, vaddr.raw());
+        warn!("Total memory areas: {}", pcb.memset.len());
+        
         // 查找包含该地址且有文件引用的内存区域  
-        for area in pcb.memset.iter() {  
+        for (i, area) in pcb.memset.iter().enumerate() {  
+            warn!("  Area {}: start={:#x}, end={:#x}, len={:#x}, mtype={:?}, has_file={}, contains={}", 
+                i, area.start, area.start + area.len, area.len, area.mtype, area.file.is_some(), area.contains(vaddr.raw()));
+                
             if area.contains(vaddr.raw()) && area.file.is_some() {  
                 let file = area.file.as_ref().unwrap();  
                 
-                // 改进偏移计算：确保使用页面对齐的地址
+                // 改进偏移计算
                 let page_aligned_vaddr = vaddr.floor().raw();
-                let area_start_page = (area.start / PAGE_SIZE) * PAGE_SIZE;
+                let file_offset = area.offset + (page_aligned_vaddr - area.start);
                 
-                // 计算在区域内的偏移
-                let offset_in_area = page_aligned_vaddr - area_start_page;
-                let file_offset = area.offset + offset_in_area;
-                
-                warn!("get_elf_segment_for_addr: vaddr={:#x}, area_start={:#x}, area_offset={:#x}, calculated_offset={:#x}", 
+                warn!("get_elf_segment_for_addr: FOUND! vaddr={:#x}, area_start={:#x}, area_offset={:#x}, calculated_offset={:#x}", 
                     vaddr.raw(), area.start, area.offset, file_offset);
                 
                 return Some((file.clone(), file_offset, area.len));  
             }  
         }  
+        
+        warn!("get_elf_segment_for_addr: NOT FOUND for vaddr={:#x}", vaddr.raw());
         None  
     }
 }
@@ -539,17 +568,48 @@ impl AsyncTask for UserTask {
             }
             futex_wake(self.pcb.lock().futex_table.clone(), uaddr, 1);
         }
-        self.pcb.lock().exit_code = Some(exit_code);
+        
         let exit_signal = tcb_writer.exit_signal;
         drop(tcb_writer);
 
-        // recycle memory resouces if the pcb just used by this thread
-        if Arc::strong_count(&self.pcb) == 1 {
-            self.pcb.lock().memset.clear();
-            self.pcb.lock().fd_table.clear();
-            self.pcb.lock().children.clear();
+        // 改进的进程退出逻辑
+        let should_cleanup_process = {
+            let mut pcb = self.pcb.lock();
+            
+            // 设置退出代码
+            pcb.exit_code = Some(exit_code);
+            
+            // 清理线程列表
+            pcb.threads.retain(|weak_ref| {
+                if let Some(thread) = weak_ref.upgrade() {
+                    thread.task_id != self.task_id  // 移除当前退出的线程
+                } else {
+                    false  // 移除已经释放的弱引用
+                }
+            });
+            
+            let remaining_threads = pcb.threads.len();
+            let is_main_thread = self.task_id == self.process_id;
+            let pcb_ref_count = Arc::strong_count(&self.pcb);
+            
+            warn!("Process exit: task_id={}, process_id={}, is_main_thread={}, remaining_threads={}, pcb_refs={}", 
+                self.task_id, self.process_id, is_main_thread, remaining_threads, pcb_ref_count);
+            
+            // 修改条件：只有主线程退出且没有其他线程，或者PCB只有一个引用时才清理
+            // 并且要确保当前进程ID与任务ID匹配（这是真正的进程退出）
+            (is_main_thread && remaining_threads == 0) || pcb_ref_count == 1
+        };
+
+        if should_cleanup_process {
+            warn!("Cleaning up process resources for process_id={}", self.process_id);
+            let mut pcb = self.pcb.lock();
+            pcb.memset.clear();
+            pcb.fd_table.clear();
+            pcb.children.clear();
+            pcb.threads.clear();
         }
 
+        // 通知父进程
         if let Some(parent) = self.parent.read().upgrade() {
             if exit_signal != 0 {
                 parent

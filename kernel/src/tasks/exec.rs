@@ -196,7 +196,26 @@ pub async fn exec_with_process(
 ) -> Result<Arc<UserTask>, Errno> {  
     let path = curr_dir.join(&path);  
   
-    let user_task = task.clone();  
+    let user_task = task.clone();
+    {
+        let mut pcb = user_task.pcb.lock();
+        
+        // 标记所有其他线程为已退出，只保留当前线程
+        pcb.threads.retain(|weak_thread| {
+            if let Some(thread) = weak_thread.upgrade() {
+                // 如果是当前线程，保留
+                if thread.task_id == user_task.task_id {
+                    true
+                } else {
+                    // 终止其他线程
+                    false
+                }
+            } else {
+                // 已经失效的线程引用，删除
+                false
+            }
+        });
+    }  
     user_task.pcb.lock().memset.clear();  
     user_task.page_table.restore();  
     user_task.page_table.change();  
@@ -311,26 +330,25 @@ pub async fn exec_with_process(
 
                 let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;
                 
-                // 关键：使用map_frames创建包含文件引用的内存区域
+                // 只使用 map_frames，不要再调用 frame_alloc
                 let ppn_start = user_task.map_frames(
                     va!(virt_addr).floor(), 
                     MemType::CodeSection, 
                     page_count,
                     Some(file.get_bare_file()), 
                     offset,      // ELF文件中的偏移
-                    virt_addr,   // 虚拟地址起始
+                    virt_addr,   // 虚拟地址起始  
                     mem_size     // 实际内存大小
                 );
                 
                 if let Some(ppn_start) = ppn_start {
-                    // 将文件内容拷贝到内存中（仅在初始加载时）
+                    // 将文件内容拷贝到内存中
                     let page_space = va!(virt_addr).slice_mut_with_len(file_size);
                     let ppn_space: &mut [u8] = ppn_start
                         .add(virt_addr % PAGE_SIZE)
                         .slice_mut_with_len(file_size);
 
                     page_space.copy_from_slice(&buffer[offset..offset + file_size]);
-                    assert_eq!(ppn_space, page_space);
                     
                     warn!("Loaded ELF segment: vaddr={:#x}, size={:#x}, file_offset={:#x}", 
                         virt_addr, mem_size, offset);

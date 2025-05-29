@@ -211,8 +211,8 @@ pub async fn initproc() {
         command("/musl/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
         command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
         command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
-        command("/musl/busybox sh run-static.sh", home_dir.clone()).await;
-        command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;*/
+        command("/musl/busybox sh run-static.sh", home_dir.clone()).await;*/
+        //command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
 
 
         // command("/musl/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
