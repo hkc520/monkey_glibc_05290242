@@ -63,8 +63,9 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                     vaddr: vaddr.floor(),  
                     tracker,  
                     rwx: 0b111,  
-                };  
+                };
                 let offset = vaddr.floor().raw() + area.offset - area.start;  
+                let file_offset = area.offset + (vaddr.floor().raw() - area.start);  
                 if let Some(file) = &area.file {  
                     file.readat(offset, mtracker.tracker.0.slice_mut_with_len(PAGE_SIZE))  
                         .expect("can't read file in cow_fork_int");  
@@ -91,41 +92,69 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
             } else {  
                 warn!("Failed to allocate Stack for vaddr: {:#x}", vaddr.raw());  
             }  
+        }
+        else if vaddr.raw() < 0x1000 {
+            warn!("Accessing very low address: {:#x}, likely null pointer dereference", vaddr.raw());
+            task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
+            return;
         }  
         // 新增：处理低地址区域（如 0x10690）  
         else if vaddr.raw() >= 0x10000 && vaddr.raw() < 0x100000 {  
             warn!("Attempting to handle CodeSection page fault for vaddr: {:#x}", vaddr.raw());  
             
-            // 首先尝试从ELF文件加载  
+
+            // 首先检查是否有对应的内存区域定义  
+            let has_mapping = task.pcb.lock().memset.iter().any(|area| {  
+                area.contains(vaddr.raw()) && area.file.is_some()  
+            });  
+            
+            if !has_mapping {  
+                warn!("No ELF segment mapping found for low address vaddr: {:#x}", vaddr.raw());  
+                warn!("Available memory areas:");  
+                for (i, area) in task.pcb.lock().memset.iter().enumerate() {  
+                    warn!("  Area {}: start={:#x}, len={:#x}, type={:?}, has_file={}",   
+                        i, area.start, area.len, area.mtype, area.file.is_some());  
+                }  
+            }
+            // 尝试从ELF文件加载  
             if let Some((file, file_offset, _)) = task.get_elf_segment_for_addr(vaddr) {  
                 warn!("Loading code from ELF file at offset: {:#x}", file_offset);  
+                
+                // 获取文件大小  
+                let mut stat = Stat::default();  
+                let file_size = if file.stat(&mut stat).is_ok() {  
+                    stat.size as usize  
+                } else {  
+                    warn!("Failed to get file size for vaddr: {:#x}", vaddr.raw());  
+                    return; // 如果无法获取文件大小，直接返回  
+                };  
+                
+                // 验证文件偏移是否在有效范围内  
+                if file_offset >= file_size {  
+                    warn!("File offset {:#x} exceeds file size {:#x} for vaddr: {:#x}",   
+                        file_offset, file_size, vaddr.raw());  
+                    return; // 偏移超出文件大小，直接返回  
+                }  
                 
                 // 分配页面  
                 let page_count = 1;  
                 if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count) {  
-                    // 获取文件大小  
-                    let mut stat = Stat::default();  
-                    let file_size = if file.stat(&mut stat).is_ok() {  
-                        stat.size as usize  
-                    } else {  
-                        PAGE_SIZE // 如果无法获取文件大小，使用页面大小作为默认值  
-                    };  
-                    
-                    // 从文件读取内容到页面  
                     let page_data = ppn.slice_mut_with_len(PAGE_SIZE);  
-                    let read_size = if file_offset < file_size {  
-                        core::cmp::min(PAGE_SIZE, file_size - file_offset)  
-                    } else {  
-                        0  
-                    };  
+                    
+                    // 计算实际可读取的大小，确保不超出文件边界  
+                    let remaining_file_size = file_size - file_offset;  
+                    let read_size = core::cmp::min(PAGE_SIZE, remaining_file_size);  
                     
                     if read_size > 0 {  
                         if let Ok(_) = file.readat(file_offset, &mut page_data[..read_size]) {  
-                            warn!("Successfully loaded code from ELF for vaddr: {:#x}", vaddr.raw());  
+                            warn!("Successfully loaded code from ELF for vaddr: {:#x}, read_size: {:#x}",   
+                                vaddr.raw(), read_size);  
                             return;  
                         } else {  
                             warn!("Failed to read from ELF file for vaddr: {:#x}", vaddr.raw());  
                         }  
+                    } else {  
+                        warn!("No data to read at offset {:#x} for vaddr: {:#x}", file_offset, vaddr.raw());  
                     }  
                 }  
             }  

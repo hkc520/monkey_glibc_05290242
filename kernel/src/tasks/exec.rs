@@ -1,3 +1,4 @@
+use xmas_elf::ElfFile;
 use super::UserTask;  
 use crate::tasks::initproc::{get_libc_path, get_glibc_path}; // 添加get_glibc_path导入  
 use crate::{  
@@ -148,7 +149,43 @@ pub fn cache_task_template(path: PathBuf) -> Result<(), Errno> {
     }  
     Ok(())  
 }  
-  
+
+pub fn validate_elf_segment_mapping(  
+    user_task: &Arc<UserTask>,  
+    elf: &ElfFile,  
+    base: usize,  
+) -> Result<(), &'static str> {  
+    let pcb = user_task.pcb.lock();  
+      
+    // 检查所有LOAD段是否都有对应的内存区域  
+    for ph in elf.program_iter().filter(|x| x.get_type().unwrap() == Type::Load) {  
+        let virt_addr = base + ph.virtual_addr() as usize;  
+        let mem_size = ph.mem_size() as usize;  
+        let end_addr = virt_addr + mem_size;  
+          
+        // 检查是否存在覆盖该地址范围的内存区域  
+        let found = pcb.memset.iter().any(|area| {  
+            area.start <= virt_addr &&   
+            area.start + area.len >= end_addr &&  
+            area.file.is_some()  
+        });  
+          
+        if !found {  
+            warn!("Missing memory mapping for ELF segment: vaddr={:#x}, size={:#x}",   
+                  virt_addr, mem_size);  
+            return Err("Missing ELF segment mapping");  
+        }  
+          
+        // 特别检查低地址区域 (0x10000 - 0x100000)  
+        if virt_addr >= 0x10000 && virt_addr < 0x100000 {  
+            info!("Low address ELF segment mapped: vaddr={:#x}, size={:#x}",   
+                  virt_addr, mem_size);  
+        }  
+    }  
+      
+    Ok(())  
+}
+
 #[async_recursion(Sync)]  
 pub async fn exec_with_process(  
     task: Arc<UserTask>,  
@@ -263,40 +300,55 @@ pub async fn exec_with_process(
             heap_bottom,  
         );  
   
-        elf.program_iter()  
-            .filter(|x| x.get_type().unwrap() == xmas_elf::program::Type::Load)  
-            .for_each(|ph| {  
-                let file_size = ph.file_size() as usize;  
-                let mem_size = ph.mem_size() as usize;  
-                let offset = ph.offset() as usize;  
-                let virt_addr = base + ph.virtual_addr() as usize;  
-                let vpn = virt_addr / PAGE_SIZE;  
+        elf.program_iter()
+            .filter(|x| x.get_type().unwrap() == xmas_elf::program::Type::Load)
+            .for_each(|ph| {
+                let file_size = ph.file_size() as usize;
+                let mem_size = ph.mem_size() as usize;
+                let offset = ph.offset() as usize;
+                let virt_addr = base + ph.virtual_addr() as usize;
+                let vpn = virt_addr / PAGE_SIZE;
 
-                // // 确保创建对应的内存区域，包含文件信息  
-                // let area = MemArea {  
-                //     start: virt_addr,  
-                //     len: mem_size,  
-                //     offset: offset,  
-                //     file: Some(file.get_bare_file()), // 关键：保存文件引用  
-                //     mtype: MemType::CodeSection,  
-                //     mtrackers: Vec::new(),  
-                // };  
-                // user_task.pcb.lock().memset.push(area);
-  
-                let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;  
-                let ppn_start =  
-                    user_task.frame_alloc(va!(virt_addr).floor(), MemType::CodeSection, page_count);  
-                let page_space = va!(virt_addr).slice_mut_with_len(file_size);  
-                let ppn_space = ppn_start  
-                    .expect("not have enough memory")  
-                    .add(virt_addr % PAGE_SIZE)  
-                    .slice_mut_with_len(file_size);  
-  
-                page_space.copy_from_slice(&buffer[offset..offset + file_size]);  
-                assert_eq!(ppn_space, page_space);  
-                assert_eq!(&buffer[offset..offset + file_size], ppn_space);  
-                assert_eq!(&buffer[offset..offset + file_size], page_space);  
-            });  
+                let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;
+                
+                // 关键：使用map_frames创建包含文件引用的内存区域
+                let ppn_start = user_task.map_frames(
+                    va!(virt_addr).floor(), 
+                    MemType::CodeSection, 
+                    page_count,
+                    Some(file.get_bare_file()), 
+                    offset,      // ELF文件中的偏移
+                    virt_addr,   // 虚拟地址起始
+                    mem_size     // 实际内存大小
+                );
+                
+                if let Some(ppn_start) = ppn_start {
+                    // 将文件内容拷贝到内存中（仅在初始加载时）
+                    let page_space = va!(virt_addr).slice_mut_with_len(file_size);
+                    let ppn_space: &mut [u8] = ppn_start
+                        .add(virt_addr % PAGE_SIZE)
+                        .slice_mut_with_len(file_size);
+
+                    page_space.copy_from_slice(&buffer[offset..offset + file_size]);
+                    assert_eq!(ppn_space, page_space);
+                    
+                    warn!("Loaded ELF segment: vaddr={:#x}, size={:#x}, file_offset={:#x}", 
+                        virt_addr, mem_size, offset);
+                } else {
+                    panic!("Failed to allocate memory for ELF segment at {:#x}", virt_addr);
+                }
+            });
+
+        info!("ELF loading completed. Memory areas:");  
+        for (i, area) in user_task.pcb.lock().memset.iter().enumerate() {  
+            info!("  Area {}: start={:#x}, len={:#x}, offset={:#x}, type={:?}, has_file={}",   
+                  i, area.start, area.len, area.offset, area.mtype, area.file.is_some());  
+        }
+
+        if let Err(e) = validate_elf_segment_mapping(&user_task, &elf, base) {  
+            warn!("ELF segment mapping validation failed: {}", e);  
+            return Err(Errno::ENOEXEC);  
+        }  
         Ok(user_task)  
     }  
 }

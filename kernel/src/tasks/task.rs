@@ -486,12 +486,24 @@ impl UserTask {
 
     pub fn get_elf_segment_for_addr(&self, vaddr: VirtAddr) -> Option<(Arc<dyn INodeInterface>, usize, usize)> {  
         let pcb = self.pcb.lock();  
-        // 查找包含该地址的内存区域  
+        
+        // 查找包含该地址且有文件引用的内存区域  
         for area in pcb.memset.iter() {  
             if area.contains(vaddr.raw()) && area.file.is_some() {  
                 let file = area.file.as_ref().unwrap();  
-                let offset = vaddr.raw() - area.start + area.offset;  
-                return Some((file.clone(), offset, area.len));  
+                
+                // 改进偏移计算：确保使用页面对齐的地址
+                let page_aligned_vaddr = vaddr.floor().raw();
+                let area_start_page = (area.start / PAGE_SIZE) * PAGE_SIZE;
+                
+                // 计算在区域内的偏移
+                let offset_in_area = page_aligned_vaddr - area_start_page;
+                let file_offset = area.offset + offset_in_area;
+                
+                warn!("get_elf_segment_for_addr: vaddr={:#x}, area_start={:#x}, area_offset={:#x}, calculated_offset={:#x}", 
+                    vaddr.raw(), area.start, area.offset, file_offset);
+                
+                return Some((file.clone(), file_offset, area.len));  
             }  
         }  
         None  
