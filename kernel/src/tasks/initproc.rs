@@ -220,7 +220,7 @@ pub async fn initproc() {
         // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
         // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
-    set_glibc_path("/glibc/lib/libc.so.6".to_string());  
+    set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string()); 
     // 测试glibc程序  
     let glibc_home_dir = PathBuf::from("/glibc");  
     command(  

@@ -77,6 +77,13 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
         drop(pcb);
         task.map(ppn, vaddr.floor(), MappingFlags::URWX);
     } else {
+        if vaddr.raw() >= 0x7000_0000 && vaddr.raw() < 0x8000_0000 {  
+            // 尝试扩展栈区域  
+            let stack_page_count = 1;  
+            if let Some(_) = task.frame_alloc(vaddr.floor(), MemType::Stack, stack_page_count) {  
+                return;  
+            }  
+        }  
         task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
     }
 }

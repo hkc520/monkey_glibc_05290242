@@ -46,6 +46,21 @@ impl UserTaskContainer {
             pid, resource, new_limit, old_limit
         );
         match resource {
+            3 => {  
+                // 处理RLIMIT_STACK资源限制  
+                if new_limit.is_valid() {  
+                    let rlimit = new_limit.get_mut();  
+                    self.task.inner_map(|x| {  
+                        x.rlimits[3] = rlimit.max;  
+                    })  
+                }  
+                if old_limit.is_valid() {  
+                    let rlimit = old_limit.get_mut();  
+                    rlimit.max = self.task.inner_map(|inner| inner.rlimits[3]);  
+                    rlimit.curr = rlimit.max;  
+                }  
+            }
+            
             7 => {
                 if new_limit.is_valid() {
                     let rlimit = new_limit.get_mut();
