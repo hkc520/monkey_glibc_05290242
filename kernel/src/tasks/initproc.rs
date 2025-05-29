@@ -27,6 +27,7 @@ use super::UserTask;
 
 /*Add：全局配置libc.so的路径 */
 static LIBC_PATH: Mutex<String> = Mutex::new(String::new());
+static GLIBC_PATH: Mutex<String> = Mutex::new(String::new()); 
 
 pub fn set_libc_path(path: String) {
     *LIBC_PATH.lock() = path;
@@ -35,6 +36,14 @@ pub fn set_libc_path(path: String) {
 pub fn get_libc_path() -> String {
     LIBC_PATH.lock().clone()
 }
+
+pub fn set_glibc_path(path: String) {  
+    *GLIBC_PATH.lock() = path;  
+}  
+  
+pub fn get_glibc_path() -> String {  
+    GLIBC_PATH.lock().clone()  
+}  
 fn clear() {
     DebugConsole::putchar(0x1b);
     DebugConsole::putchar(0x5b);
@@ -167,7 +176,7 @@ pub async fn initproc() {
         home_dir.clone(),
     )
     .await;*/
-    let home_dir = PathBuf::from("/musl/basic");
+    
    // command("/musl/busybox sh ", home_dir.clone()).await;
 
     /*  command(
@@ -181,6 +190,9 @@ pub async fn initproc() {
         home_dir.clone(),
     )
     .await;*/
+
+
+     /*let home_dir = PathBuf::from("/musl/basic");
      command(
             "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
             home_dir.clone(),
@@ -200,13 +212,30 @@ pub async fn initproc() {
         command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
         command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
         command("/musl/busybox sh run-static.sh", home_dir.clone()).await;
-        command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
+        command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;*/
+
+
         // command("/musl/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
         //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
         // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
         // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
-    
+    set_glibc_path("/glibc/lib/libc.so.6".to_string());  
+    // 测试glibc程序  
+    let glibc_home_dir = PathBuf::from("/glibc");  
+    command(  
+        "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",  
+        glibc_home_dir.clone(),  
+    ).await;  
+    command("/glibc/busybox sh /glibc/basic/run-all.sh", glibc_home_dir.clone()).await;
+    command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
+            glibc_home_dir.clone().clone(),
+        )
+        .await;
+        let home_dir = PathBuf::from("/glibc");
+        command("/glibc/busybox sh libctest_testcode.sh", home_dir.clone()).await;
+        command("/glibc/busybox sh busybox_testcode.sh", home_dir.clone()).await;
     //command("/musl/busybox sh basic_testcode.sh", home_dir.clone()).await;
 
     // command("/musl/busybox sh", home_dir.clone()).await;

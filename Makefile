@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 export ROOT_MANIFEST_DIR := $(shell pwd)
 RELEASE := release
-LOG ?= error
+LOG ?= info
 # RISC-V 配置
 RISCV_TARGET := riscv64gc-unknown-none-elf
 RISCV_ARCH := riscv64
