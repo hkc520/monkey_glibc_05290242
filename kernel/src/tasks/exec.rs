@@ -363,19 +363,26 @@ pub async fn exec_with_process(
                     offset,
                     virt_addr,
                     mem_size,
-                    mapping_flags // 使用从ELF获取的权限
+                    mapping_flags
                 );
                 
                 if let Some(ppn_start) = ppn_start {
-                    // 将文件内容拷贝到内存中
-                    let ppn_space: &mut [u8] = ppn_start
-                        .add(virt_addr % PAGE_SIZE)
-                        .slice_mut_with_len(file_size);
-
-                    ppn_space.copy_from_slice(&buffer[offset..offset + file_size]);
+                    // 修复地址计算和内存初始化
+                    let page_offset = virt_addr % PAGE_SIZE;
+                    let target_paddr = ppn_start.add(page_offset);
                     
-                    warn!("Loaded ELF segment: vaddr={:#x}, size={:#x}, file_offset={:#x}", 
-                        virt_addr, mem_size, offset);
+                    // 首先清零整个内存区域（处理BSS段）
+                    let total_space: &mut [u8] = ppn_start.slice_mut_with_len(page_count * PAGE_SIZE);
+                    total_space.fill(0);
+                    
+                    // 然后复制文件内容（如果有的话）
+                    if file_size > 0 {
+                        let file_space: &mut [u8] = target_paddr.slice_mut_with_len(file_size);
+                        file_space.copy_from_slice(&buffer[offset..offset + file_size]);
+                    }
+                    
+                    debug!("Loaded ELF segment: vaddr={:#x}, file_size={:#x}, mem_size={:#x}, flags={:?}", 
+                        virt_addr, file_size, mem_size, mapping_flags);
                 } else {
                     panic!("Failed to allocate memory for ELF segment at {:#x}", virt_addr);
                 }
