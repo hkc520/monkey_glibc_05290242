@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+use crate::tasks::MemArea;
 use fs::Stat;
 use crate::tasks::UserTaskControlFlow;  
 use crate::tasks::{MapTrack, MemType, UserTask};  
@@ -155,9 +157,16 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                 tcb.signal.add_signal(SignalFlags::SIGSEGV);
                 warn!("Added SIGSEGV signal for null pointer access");
             } else {
-                warn!("SIGSEGV already pending, terminating task");
-                // 强制退出任务以避免死循环
+                warn!("SIGSEGV already pending, force terminating task");
+                drop(tcb); // 释放锁
+                // 强制终止，不再尝试信号处理
                 task.exit(128 + SignalFlags::SIGSEGV.num());
+                // 额外确保任务状态被标记为已退出
+                let mut pcb = task.pcb.lock();
+                pcb.exit_code = Some(128 + SignalFlags::SIGSEGV.num());
+                drop(pcb);
+                // 直接返回，不再处理页面错误
+                return;
             }
             return;
         }  
@@ -278,75 +287,89 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
             }  
         }  
 
-        else if vaddr.raw() >= 0x200000000 && vaddr.raw() < 0x300000000 {  
-            warn!("Detected TLS range access for vaddr: {:#x}", vaddr.raw());
-            warn!("Attempting to allocate TLS (glibc) for vaddr: {:#x}", vaddr.raw());  
-            let tls_page_count = 1;  
-            // 使用 map_frames 直接指定合适的权限，避免重复映射
-            if let Some(_ppn) = task.map_frames(
-                vaddr.floor(), 
-                MemType::Mmap, 
-                tls_page_count, 
-                None, 
-                0, 
-                vaddr.floor().raw(), 
-                tls_page_count * PAGE_SIZE, 
-                MappingFlags::URW  // TLS区域通常只需要读写权限
-            ) {
-                warn!("Successfully allocated TLS (glibc) for vaddr: {:#x}", vaddr.raw());  
-                return;  
-            } else {  
-                warn!("Failed to allocate TLS (glibc) for vaddr: {:#x}", vaddr.raw());  
-            }  
-        }  
+        else if vaddr.raw() >= 0x200000000 && vaddr.raw() < 0x300000000 {
+        warn!("Simple TLS handling for vaddr: {:#x}", vaddr.raw());
+        
+        // 检查循环
+        static mut LAST_TLS_ADDR: usize = 0;
+        static mut TLS_COUNT: usize = 0;
+        
+        unsafe {
+            if LAST_TLS_ADDR == vaddr.floor().raw() {
+                TLS_COUNT += 1;
+                if TLS_COUNT > 3 {
+                    warn!("TLS loop detected at {:#x}, exiting task {}", vaddr.raw(), task.get_task_id());
+                    task.exit(1);
+                    return;
+                }
+            } else {
+                LAST_TLS_ADDR = vaddr.floor().raw();
+                TLS_COUNT = 1;
+            }
+        }
+        
+        // 使用 UserTask 的 frame_alloc 方法分配TLS页面
+        let tls_page_count = 1;
+        if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, tls_page_count) {
+            // 清零页面内容
+            ppn.slice_mut_with_len(PAGE_SIZE).fill(0);
+            warn!("Simple TLS page allocated for {:#x}", vaddr.raw());
+            
+            unsafe {
+                TLS_COUNT = 0; // 重置计数器
+            }
+            return;
+        }
+        
+        warn!("TLS allocation failed for {:#x}", vaddr.raw());
+        task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
+    }  
           
         warn!("No suitable memory region found for vaddr: {:#x}, sending SIGSEGV", vaddr.raw());  
         task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);  
     }  
 }
 impl UserTaskContainer {
-    /// Handle user interrupt.
     pub async fn handle_syscall(&self, cx_ref: &mut TrapFrame) -> UserTaskControlFlow {
+        warn!("Task {} entering handle_syscall, SEPC: {:#x}", self.task.get_task_id(), cx_ref[TrapFrameArgs::SEPC]);
+        
         let ustart = Time::now().raw();
-        if matches!(run_user_task(cx_ref), EscapeReason::SysCall) {
+        let escape_reason = run_user_task(cx_ref);
+        
+        warn!("Task {} run_user_task returned: {:?}", self.task.get_task_id(), escape_reason);
+        
+        if matches!(escape_reason, EscapeReason::SysCall) {
             self.task
                 .inner_map(|inner| inner.tms.utime += (Time::now().raw() - ustart) as u64);
 
             let sstart = Time::now().raw();
-            if cx_ref[TrapFrameArgs::SYSCALL] == Sysno::rt_sigreturn.id() as _ {
+            let syscall_id = cx_ref[TrapFrameArgs::SYSCALL];
+            
+            warn!("Task {} syscall: {} ({})", self.task.get_task_id(), syscall_id, 
+                  syscalls::Sysno::from(syscall_id as i32));
+            
+            if syscall_id == Sysno::rt_sigreturn.id() as _ {
+                warn!("Task {} rt_sigreturn, returning Break", self.task.get_task_id());
                 return UserTaskControlFlow::Break;
             }
+            
             cx_ref.syscall_ok();
             let result = self
-                .syscall(cx_ref[TrapFrameArgs::SYSCALL], cx_ref.args())
+                .syscall(syscall_id, cx_ref.args())
                 .await
                 .map_or_else(|e| -e.into_raw() as isize, |x| x as isize)
                 as usize;
 
-            debug!(
-                "[task {}] syscall result: {}",
-                self.task.get_task_id(),
-                result as isize
-            );
+            warn!("Task {} syscall {} result: {}", self.task.get_task_id(), syscall_id, result as isize);
 
             cx_ref[TrapFrameArgs::RET] = result;
             self.task
                 .inner_map(|inner| inner.tms.stime += (Time::now().raw() - sstart) as u64);
+        } else {
+            warn!("Task {} non-syscall escape reason: {:?}", self.task.get_task_id(), escape_reason);
         }
 
-        // let trap_type = trap_pre_handle(cx_ref);
-        // match trap_type {
-        //     arch::TrapType::Time => {
-        //         // debug!("time interrupt from user");
-        //     }
-        //     arch::TrapType::Unknown => {
-        //         debug!("unknown trap: {:#x?}", cx_ref);
-        //         panic!("");
-        //     }
-        //     arch::TrapType::SupervisorExternal => {
-        //         get_int_device().try_handle_interrupt(u32::MAX);
-        //     }
-        // }
+        warn!("Task {} handle_syscall returning Continue", self.task.get_task_id());
         UserTaskControlFlow::Continue
     }
 }

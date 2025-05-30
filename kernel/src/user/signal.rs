@@ -36,12 +36,60 @@ impl UserTaskContainer {
                 SignalFlags::SIGCANCEL | SignalFlags::SIGSEGV | SignalFlags::SIGILL => {
                     current_user_task().exit_with_signal(signal.num());
                 }
+                SignalFlags::SIGTIMER => {
+                    // SIGTIMER 的默认行为应该是忽略
+                    warn!("SIGTIMER signal with no handler, ignoring");
+                    return;
+                }
                 _ => {}
             }
             return;
         }
         // ignore signal if the handler of is SIG_IGN(1)
         if sigaction.handler == 1 {
+            return;
+        }
+
+        // 强化的信号处理器地址验证
+        if sigaction.handler < 0x10000 || sigaction.handler >= 0x800000000000 {
+            warn!("Invalid signal handler address: {:#x} for signal {:?} in task {}", 
+                sigaction.handler, signal, self.task.get_task_id());
+            // 对于无效处理器，强制退出
+            self.task.exit_with_signal(signal.num());
+            return;
+        }
+
+        // 验证处理器地址是否在可执行内存区域中
+        let handler_valid = {
+            let pcb = self.task.pcb.lock();
+            pcb.memset.iter().any(|area| {
+                let in_area = area.contains(sigaction.handler);
+                let is_executable = matches!(area.mtype, 
+                    crate::tasks::MemType::CodeSection | 
+                    crate::tasks::MemType::Stack |
+                    crate::tasks::MemType::Mmap  // 某些动态库可能在mmap区域
+                );
+                
+                if in_area {
+                    warn!("Signal handler {:#x} found in area: start={:#x}, len={:#x}, type={:?}, executable={}",
+                        sigaction.handler, area.start, area.len, area.mtype, is_executable);
+                }
+                
+                in_area && is_executable
+            })
+        };
+
+        if !handler_valid {
+            warn!("Signal handler address {:#x} is not in executable memory for signal {:?} in task {}", 
+                sigaction.handler, signal, self.task.get_task_id());
+            // 对于定位在无效内存的处理器，强制退出
+            self.task.exit_with_signal(signal.num());
+            return;
+        }
+
+        // 暂时屏蔽 SIGTIMER 的处理，直到我们确认其他问题解决
+        if signal == SignalFlags::SIGTIMER {
+            warn!("Temporarily blocking SIGTIMER signal processing for stability in task {}", self.task.get_task_id());
             return;
         }
 
