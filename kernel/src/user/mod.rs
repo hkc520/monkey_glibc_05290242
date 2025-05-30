@@ -227,15 +227,28 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
             }  
         }  
         // 新增：处理glibc特有的内存区域  
+        // else if vaddr.raw() >= 0x200000000 && vaddr.raw() < 0x300000000 {  
+        //     warn!("Attempting to allocate Mmap (glibc) for vaddr: {:#x}", vaddr.raw());  
+        //     let glibc_page_count = 1;  
+        //     if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, glibc_page_count) {
+        //         task.map(ppn, vaddr.floor(), MappingFlags::URWX);  
+        //         warn!("Successfully allocated Mmap (glibc) for vaddr: {:#x}", vaddr.raw());  
+        //         return;  
+        //     } else {  
+        //         warn!("Failed to allocate Mmap (glibc) for vaddr: {:#x}", vaddr.raw());  
+        //     }  
+        // }
+
         else if vaddr.raw() >= 0x200000000 && vaddr.raw() < 0x300000000 {  
-            warn!("Attempting to allocate Mmap (glibc) for vaddr: {:#x}", vaddr.raw());  
-            let glibc_page_count = 1;  
-            if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, glibc_page_count) {
-                task.map(ppn, vaddr.floor(), MappingFlags::URWX);  
-                warn!("Successfully allocated Mmap (glibc) for vaddr: {:#x}", vaddr.raw());  
+            warn!("Attempting to allocate TLS (glibc) for vaddr: {:#x}", vaddr.raw());  
+            let tls_page_count = 1;  
+            if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, tls_page_count) {
+                // TLS区域需要读写权限，不需要执行权限
+                task.map(ppn, vaddr.floor(), MappingFlags::URW);  
+                warn!("Successfully allocated TLS (glibc) for vaddr: {:#x}", vaddr.raw());  
                 return;  
             } else {  
-                warn!("Failed to allocate Mmap (glibc) for vaddr: {:#x}", vaddr.raw());  
+                warn!("Failed to allocate TLS (glibc) for vaddr: {:#x}", vaddr.raw());  
             }  
         }  
           
