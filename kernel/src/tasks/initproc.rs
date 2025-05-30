@@ -176,8 +176,8 @@ pub async fn initproc() {
         home_dir.clone(),
     )
     .await;*/
-    
-   // command("/musl/busybox sh ", home_dir.clone()).await;
+//     let home_dir = PathBuf::from("/musl");
+//    command("/musl/busybox sh ", home_dir.clone()).await;
 
     /*  command(
         "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl-musl ####",
@@ -222,7 +222,7 @@ pub async fn initproc() {
         // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
     set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string()); 
     // 测试glibc程序  
-    let glibc_home_dir = PathBuf::from("/glibc");  
+    let glibc_home_dir = PathBuf::from("/glibc/basic");  
     command(  
         "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",  
         glibc_home_dir.clone(),  
