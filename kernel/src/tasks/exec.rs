@@ -1,3 +1,4 @@
+use crate::IRQ;
 use xmas_elf::ElfFile;
 use super::UserTask;  
 use crate::tasks::initproc::{get_libc_path, get_glibc_path}; // 添加get_glibc_path导入  
@@ -215,13 +216,33 @@ pub async fn exec_with_process(
                 false
             }
         });
-    }  
-    user_task.pcb.lock().memset.clear();  
-    user_task.page_table.restore();  
-    user_task.page_table.change();  
+    }
+    {
+        // 禁用中断以确保原子性
+        IRQ::int_disable();
+        
+        let mut pcb = user_task.pcb.lock();
+        warn!("EXEC: Before clear - task_id={}, memset size={}", user_task.task_id, pcb.memset.len());
+        pcb.memset.clear();  
+        // 在这里立即释放PCB锁但保持中断禁用
+        drop(pcb);
+        
+        // 确保页表操作也是原子的
+        user_task.page_table.restore();  
+        user_task.page_table.change();  
+        
+        // 重新启用中断
+        IRQ::int_enable();
+    } 
   
     let caches = TASK_CACHES.lock();  
-    if let Some(cache_task) = caches.iter().find(|x| x.name == path) {  
+    warn!("EXEC: Checking cache for path: {}", path.path());
+    warn!("EXEC: Available cache entries: {}", caches.len());
+    for (i, cache) in caches.iter().enumerate() {
+        warn!("EXEC: Cache {}: name={}", i, cache.name.path());
+    }
+    if let Some(cache_task) = caches.iter().find(|x| x.name == path) {
+        warn!("EXEC: Found cached task for {}", path.path());  
         init_task_stack(  
             user_task.clone(),  
             args,  
@@ -246,6 +267,7 @@ pub async fn exec_with_process(
         }  
         Ok(user_task)  
     } else {  
+        warn!("EXEC: No cache found, loading ELF from file: {}", path.path());
         drop(caches);  
           
         let file = File::open(path.clone(), OpenFlags::O_RDONLY)  

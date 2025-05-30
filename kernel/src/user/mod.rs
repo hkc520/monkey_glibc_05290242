@@ -26,28 +26,38 @@ pub struct UserTaskContainer {
 /// call this function when trigger store/instruction page fault.  
 /// copy page or remap page.  
 pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr) {
-    warn!(
-        "store/instruction page fault @ {:#x} vaddr: {} paddr: {:?} task_id: {}",
-        cx_ref[TrapFrameArgs::SEPC],
-        vaddr,
-        task.page_table.translate(vaddr),
-        task.get_task_id()
-    );
-
-    // 详细输出内存区域信息
-    /*warn!("=== Memory areas debug info ===");
-    let mut pcb = task.pcb.lock();
-    for (i, area) in pcb.memset.iter().enumerate() {
-        warn!("  Area {}: start={:#x}, end={:#x}, len={:#x}, offset={:#x}, type={:?}, has_file={}", 
-            i, area.start, area.start + area.len, area.len, area.offset, area.mtype, area.file.is_some());
+    // 对TLS区域使用更低的日志级别
+    if vaddr.raw() >= 0x200000000 && vaddr.raw() < 0x300000000 {
+        debug!(  // 使用debug而不是warn
+            "TLS page fault @ {:#x} vaddr: {} paddr: {:?} task_id: {}",
+            cx_ref[TrapFrameArgs::SEPC],
+            vaddr,
+            task.page_table.translate(vaddr),
+            task.get_task_id()
+        );
+    } else {
+        warn!(  // 其他区域仍使用warn
+            "store/instruction page fault @ {:#x} vaddr: {} paddr: {:?} task_id: {}",
+            cx_ref[TrapFrameArgs::SEPC],
+            vaddr,
+            task.page_table.translate(vaddr),
+            task.get_task_id()
+        );
     }
-    warn!("=== End debug info ===");*/
+
+    warn!("Processing page fault for vaddr: {:#x}, vaddr.floor(): {:#x}", vaddr.raw(), vaddr.floor().raw());
+
     let mut pcb = task.pcb.lock();  
     let area = pcb.memset.iter_mut().find(|x| x.contains(vaddr.raw()));  
     if let Some(area) = area {  
+        warn!("Found existing memory area for vaddr: {:#x}", vaddr.raw());
+        warn!("Area details: start={:#x}, len={:#x}, offset={:#x}, mtype={:?}, has_file={}", 
+            area.start, area.len, area.offset, area.mtype, area.file.is_some());
+        
         let finded = area.mtrackers.iter_mut().find(|x| x.vaddr == vaddr.floor());  
         let ppn = match finded {  
             Some(map_track) => {  
+                warn!("Found existing MapTrack for vaddr: {:#x}", vaddr.raw());
                 if area.mtype == MemType::Shared {  
                     task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);  
                     return;  
@@ -67,31 +77,60 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                 map_track.tracker.0  
             }  
             None => {  
+                warn!("No existing MapTrack found, creating new one for vaddr: {:#x}", vaddr.raw());
                 let tracker = Arc::new(frame_alloc().expect("can't alloc frame in cow_fork_int"));  
                 let mtracker = MapTrack {  
                     vaddr: vaddr.floor(),  
                     tracker,  
                     rwx: 0b111,  
                 };
-                let offset = vaddr.floor().raw() + area.offset - area.start;  
+                
                 let file_offset = area.offset + (vaddr.floor().raw() - area.start);  
+                warn!("Calculated file_offset: {:#x} for vaddr: {:#x}", file_offset, vaddr.raw());
+                
                 if let Some(file) = &area.file {  
-                    file.readat(offset, mtracker.tracker.0.slice_mut_with_len(PAGE_SIZE))  
-                        .expect("can't read file in cow_fork_int");  
-                }  
+                    warn!("Reading from file at offset: {:#x}", file_offset);
+                    if let Err(e) = file.readat(file_offset, mtracker.tracker.0.slice_mut_with_len(PAGE_SIZE)) {
+                        warn!("Failed to read from file: {:?}", e);
+                    } else {
+                        warn!("Successfully read from file");
+                    }
+                } else {
+                    warn!("No file associated with this area, using zero-filled page");
+                }
+                
                 let ppn = mtracker.tracker.0;  
                 area.mtrackers.push(mtracker);  
                 ppn  
             }  
         };  
+        
         let flags = if area.mtype == MemType::Mmap && vaddr.raw() >= 0x200000000 {  
-            MappingFlags::URWX  // glibc区域需要完整权限  
+            warn!("Using URW flags for TLS region");
+            MappingFlags::URW
         } else {  
+            warn!("Using URWX flags for other regions");
             MappingFlags::URWX  
         };
+        
         drop(pcb);
-          
-        task.map(ppn, vaddr.floor(), MappingFlags::URWX);  
+        
+        warn!("Mapping ppn {:#x} to vaddr {:#x} with flags {:?}", ppn.raw(), vaddr.floor().raw(), flags);
+        task.map(ppn, vaddr.floor(), flags);  
+        
+        // 验证映射是否成功
+        if let Some((mapped_paddr, mapped_flags)) = task.page_table.translate(vaddr.floor()) {
+            warn!("Mapping verification: vaddr {:#x} -> paddr {:#x}, flags {:?}", 
+                vaddr.floor().raw(), mapped_paddr.raw(), mapped_flags);
+            if mapped_paddr.raw() == 0 || mapped_flags.is_empty() {
+                warn!("WARNING: Mapping failed or invalid!");
+            } else {
+                warn!("Mapping verified successfully");
+            }
+        } else {
+            warn!("WARNING: Mapping verification failed - no translation found!");
+        }
+        warn!("Mapping completed for vaddr: {:#x}", vaddr.raw());
     } else {  
         // 释放 pcb 锁以避免死锁  
         drop(pcb);  
@@ -108,12 +147,14 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
             }  
         }
         else if vaddr.raw() < 0x1000 {
+            warn!("Detected null pointer access for vaddr: {:#x}", vaddr.raw());
             warn!("Accessing very low address: {:#x}, likely null pointer dereference", vaddr.raw());
             task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
             return;
         }  
         // 新增：处理低地址区域（如 0x10690）  
         else if vaddr.raw() >= 0x10000 && vaddr.raw() < 0x100000 {  
+            warn!("Detected CodeSection range access for vaddr: {:#x}", vaddr.raw());
             warn!("Attempting to handle CodeSection page fault for vaddr: {:#x}", vaddr.raw());  
             
 
@@ -217,6 +258,7 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
         }  
         // 新增：处理堆区域扩展  
         else if vaddr.raw() >= 0x1000000 && vaddr.raw() < 0x2000000 {  
+            warn!("Detected heap range access for vaddr: {:#x}", vaddr.raw());
             warn!("Attempting to allocate Mmap (heap) for vaddr: {:#x}", vaddr.raw());  
             let heap_page_count = 1;  
             if let Some(_) = task.frame_alloc(vaddr.floor(), MemType::Mmap, heap_page_count) {  
@@ -226,13 +268,22 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                 warn!("Failed to allocate Mmap (heap) for vaddr: {:#x}", vaddr.raw());  
             }  
         }  
-        
+
         else if vaddr.raw() >= 0x200000000 && vaddr.raw() < 0x300000000 {  
+            warn!("Detected TLS range access for vaddr: {:#x}", vaddr.raw());
             warn!("Attempting to allocate TLS (glibc) for vaddr: {:#x}", vaddr.raw());  
             let tls_page_count = 1;  
-            if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, tls_page_count) {
-                // TLS区域需要读写权限，不需要执行权限
-                task.map(ppn, vaddr.floor(), MappingFlags::URW);  
+            // 使用 map_frames 直接指定合适的权限，避免重复映射
+            if let Some(_ppn) = task.map_frames(
+                vaddr.floor(), 
+                MemType::Mmap, 
+                tls_page_count, 
+                None, 
+                0, 
+                vaddr.floor().raw(), 
+                tls_page_count * PAGE_SIZE, 
+                MappingFlags::URW  // TLS区域通常只需要读写权限
+            ) {
                 warn!("Successfully allocated TLS (glibc) for vaddr: {:#x}", vaddr.raw());  
                 return;  
             } else {  

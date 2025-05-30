@@ -1,3 +1,4 @@
+use crate::tasks::memset;
 use super::{
     filetable::{rlimits_new, FileTable},
     memset::{MemSet, MemType},
@@ -322,44 +323,84 @@ impl UserTask {
         self.exit(128 + signal);
     }
 
-    #[inline]
     pub fn cow_fork(self: Arc<Self>) -> Arc<Self> {
-        // Give the frame_tracker in the memset a type.
-        // it will contains the frame used for page mapping、
-        // mmap or text section.
-        // and then we can implement COW(copy on write).
         let parent_task: Arc<UserTask> = self.clone();
         let work_dir = parent_task.clone().pcb.lock().curr_dir.path_buf();
         let new_task = Self::new(Arc::downgrade(&parent_task), work_dir);
         let mut new_tcb_writer = new_task.tcb.write();
-        // clone fd_table and clone heap
-        let mut new_pcb = new_task.pcb.lock();
-        let mut pcb = self.pcb.lock();
-        new_pcb.fd_table.0 = pcb.fd_table.0.clone();
-        new_pcb.heap = pcb.heap;
+        
+        // 添加调试信息：检查父进程的memset状态
+        {
+            let parent_pcb = self.pcb.lock();
+            warn!("COW_FORK: Parent task_id={}, memset size={}", self.task_id, parent_pcb.memset.len());
+            for (i, area) in parent_pcb.memset.iter().enumerate() {
+                warn!("COW_FORK: Parent Area {}: start={:#x}, len={:#x}, mtype={:?}, has_file={}, mtrackers={}",
+                    i, area.start, area.len, area.mtype, area.file.is_some(), area.mtrackers.len());
+            }
+            drop(parent_pcb);
+        }
+        
+        // 一次性获取锁并复制所有数据，准备两份memset数据
+        let (memset_for_new_pcb, memset_for_cow, fd_table_clone, heap, curr_dir_clone, shms_clone) = {
+            let mut pcb = self.pcb.lock();
+            let memset_original = pcb.memset.clone();
+            let memset_for_new_pcb = memset_original.clone(); // 用于创建new_pcb.memset
+            let memset_for_cow = memset_original;              // 用于COW映射
+            let fd_table_clone = pcb.fd_table.0.clone();
+            let heap = pcb.heap;
+            let curr_dir_clone = pcb.curr_dir.clone();
+            let shms_clone = pcb.shms.clone();
+            
+            // 添加子进程
+            pcb.children.push(new_task.clone());
+            
+            (memset_for_new_pcb, memset_for_cow, fd_table_clone, heap, curr_dir_clone, shms_clone)
+        };
+        
+        // 添加调试信息：检查复制的数据
+        warn!("COW_FORK: Copied memset size={}", memset_for_new_pcb.len());
+        for (i, area) in memset_for_new_pcb.iter().enumerate() {
+            warn!("COW_FORK: Copied Area {}: start={:#x}, len={:#x}, mtype={:?}, has_file={}, mtrackers={}",
+                i, area.start, area.len, area.mtype, area.file.is_some(), area.mtrackers.len());
+        }
+        
+        // 复制到子进程
+        {
+            let mut new_pcb = new_task.pcb.lock();
+            new_pcb.fd_table.0 = fd_table_clone;
+            new_pcb.heap = heap;
+            new_pcb.curr_dir = curr_dir_clone;
+            new_pcb.shms = shms_clone.clone();
+            
+            // 使用第一份memset数据创建MemSet（无需clone）
+            new_pcb.memset = memset::MemSet::new(memset_for_new_pcb);
+            
+            // 添加调试信息：确认子进程的memset
+            warn!("COW_FORK: Child task_id={} memset created with {} areas", new_task.task_id, new_pcb.memset.len());
+        }
+        
         new_tcb_writer.cx = self.tcb.read().cx.clone();
         new_tcb_writer.cx[TrapFrameArgs::RET] = 0;
-        new_pcb.curr_dir = pcb.curr_dir.clone();
-        pcb.children.push(new_task.clone());
-        new_pcb.shms = pcb.shms.clone();
-        drop(new_pcb);
-
-        // cow fork
-        pcb.memset.iter().for_each(|x| {
-            let map_area = x.clone();
-            map_area.mtrackers.iter().for_each(|x| {
-                new_task.map(x.tracker.0, x.vaddr, MappingFlags::URX);
-                self.map(x.tracker.0, x.vaddr, MappingFlags::URX);
-            });
-            new_task.pcb.lock().memset.push(map_area);
-        });
         drop(new_tcb_writer);
-        // copy shm and map them
-        pcb.shms.iter().for_each(|x| {
-            x.mem.trackers.iter().enumerate().for_each(|(i, tracker)| {
-                new_task.map(tracker.0, va!(x.start + i * PAGE_SIZE), MappingFlags::URWX);
+
+        // 使用第二份memset数据进行COW映射处理（无需clone）
+        memset_for_cow.iter().for_each(|area| {
+            area.mtrackers.iter().for_each(|mtracker| {
+                new_task.map(mtracker.tracker.0, mtracker.vaddr, MappingFlags::URX);
+                self.map(mtracker.tracker.0, mtracker.vaddr, MappingFlags::URX);
             });
         });
+        
+        // 处理共享内存
+        memset_for_cow.iter().for_each(|x| {
+            if let Some(shm) = shms_clone.iter().find(|shm| shm.start <= x.start && x.start < shm.start + shm.size) {
+                shm.mem.trackers.iter().enumerate().for_each(|(i, tracker)| {
+                    new_task.map(tracker.0, va!(shm.start + i * PAGE_SIZE), MappingFlags::URWX);
+                });
+            }
+        });
+        
+        warn!("COW_FORK: Completed for child task_id={}", new_task.task_id);
         new_task
     }
 

@@ -11,7 +11,7 @@ use runtime::frame::FrameTracker;
 
 /// Memory set for storing the memory and its map relation.
 #[derive(Debug)]
-pub struct MemSet(Vec<MemArea>);
+pub struct MemSet(pub Vec<MemArea>);
 
 /// Deref for memset, let it iterable
 impl Deref for MemSet {
