@@ -91,6 +91,7 @@ impl UserTaskContainer {
                         off,
                         usize::from(addr),
                         len,
+                        prot.into(), // 使用prot参数转换为MappingFlags
                     )
                     .ok_or(Errno::EFAULT)?,
                 None => {
@@ -154,6 +155,43 @@ impl UserTaskContainer {
             addr, len, flags
         );
         // use it temporarily
+        Ok(0)
+    }
+
+    pub async fn sys_set_robust_list(&self, head: usize, len: usize) -> SysResult {
+        // 根据 Linux 标准，robust_list_head 结构体的大小应该是 24 字节（在 64 位系统上）
+        const ROBUST_LIST_HEAD_SIZE: usize = 24;
+        
+        // 验证长度参数
+        if len != ROBUST_LIST_HEAD_SIZE {
+            warn!("SYS_SET_ROBUST_LIST: Invalid size. Expected: {}, Got: {}", ROBUST_LIST_HEAD_SIZE, len);
+            return Err(Errno::EINVAL);
+        }
+
+        // 如果 head 不为 0，验证地址有效性
+        if head != 0 {
+            // 检查地址是否在用户空间范围内
+            if head >= 0x8000_0000_0000_0000 {
+                warn!("SYS_SET_ROBUST_LIST: Invalid head address: {:#x}", head);
+                return Err(Errno::EFAULT);
+            }
+
+            // 验证地址是否可访问（通过页表转换）
+            let head_addr = VirtAddr::from(head);
+            if self.task.page_table.translate(head_addr).is_none() {
+                warn!("SYS_SET_ROBUST_LIST: Address {:#x} is not mapped", head);
+                return Err(Errno::EFAULT);
+            }
+        }
+
+        // 设置当前线程的 robust list
+        {
+            let mut tcb = self.task.tcb.write();
+            tcb.robust_list_head = head;
+            tcb.robust_list_len = len;
+        }
+
+        debug!("SYS_SET_ROBUST_LIST: Set robust list head={:#x}, len={}", head, len);
         Ok(0)
     }
 

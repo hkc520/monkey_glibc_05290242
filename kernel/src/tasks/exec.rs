@@ -318,6 +318,27 @@ pub async fn exec_with_process(
             elf.get_ph_addr().unwrap_or(0) as usize,  
             heap_bottom,  
         );  
+
+        fn elf_flags_to_mapping_flags(elf_flags: xmas_elf::program::Flags) -> MappingFlags {
+            let mut flags = MappingFlags::U; // 用户可访问
+            
+            if elf_flags.is_read() {
+                flags |= MappingFlags::R;
+            }
+            if elf_flags.is_write() {
+                flags |= MappingFlags::W;
+            }
+            if elf_flags.is_execute() {
+                flags |= MappingFlags::X;
+            }
+            
+            // 确保至少有读权限
+            if !flags.contains(MappingFlags::R) {
+                flags |= MappingFlags::R;
+            }
+            
+            flags
+        }
   
         elf.program_iter()
             .filter(|x| x.get_type().unwrap() == xmas_elf::program::Type::Load)
@@ -328,27 +349,30 @@ pub async fn exec_with_process(
                 let virt_addr = base + ph.virtual_addr() as usize;
                 let vpn = virt_addr / PAGE_SIZE;
 
+                // 获取ELF段的权限并转换为页面权限
+                let elf_flags = ph.flags();
+                let mapping_flags = elf_flags_to_mapping_flags(elf_flags);
+
                 let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;
                 
-                // 只使用 map_frames，不要再调用 frame_alloc
                 let ppn_start = user_task.map_frames(
                     va!(virt_addr).floor(), 
                     MemType::CodeSection, 
                     page_count,
                     Some(file.get_bare_file()), 
-                    offset,      // ELF文件中的偏移
-                    virt_addr,   // 虚拟地址起始  
-                    mem_size     // 实际内存大小
+                    offset,
+                    virt_addr,
+                    mem_size,
+                    mapping_flags // 使用从ELF获取的权限
                 );
                 
                 if let Some(ppn_start) = ppn_start {
                     // 将文件内容拷贝到内存中
-                    let page_space = va!(virt_addr).slice_mut_with_len(file_size);
                     let ppn_space: &mut [u8] = ppn_start
                         .add(virt_addr % PAGE_SIZE)
                         .slice_mut_with_len(file_size);
 
-                    page_space.copy_from_slice(&buffer[offset..offset + file_size]);
+                    ppn_space.copy_from_slice(&buffer[offset..offset + file_size]);
                     
                     warn!("Loaded ELF segment: vaddr={:#x}, size={:#x}, file_offset={:#x}", 
                         virt_addr, mem_size, offset);

@@ -35,14 +35,14 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
     );
 
     // 详细输出内存区域信息
-    warn!("=== Memory areas debug info ===");
+    /*warn!("=== Memory areas debug info ===");
     let mut pcb = task.pcb.lock();
     for (i, area) in pcb.memset.iter().enumerate() {
         warn!("  Area {}: start={:#x}, end={:#x}, len={:#x}, offset={:#x}, type={:?}, has_file={}", 
             i, area.start, area.start + area.len, area.len, area.offset, area.mtype, area.file.is_some());
     }
-    warn!("=== End debug info ===");
-    //let mut pcb = task.pcb.lock();  
+    warn!("=== End debug info ===");*/
+    let mut pcb = task.pcb.lock();  
     let area = pcb.memset.iter_mut().find(|x| x.contains(vaddr.raw()));  
     if let Some(area) = area {  
         let finded = area.mtrackers.iter_mut().find(|x| x.vaddr == vaddr.floor());  
@@ -84,8 +84,13 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                 ppn  
             }  
         };  
-  
-        drop(pcb);  
+        let flags = if area.mtype == MemType::Mmap && vaddr.raw() >= 0x200000000 {  
+            MappingFlags::URWX  // glibc区域需要完整权限  
+        } else {  
+            MappingFlags::URWX  
+        };
+        drop(pcb);
+          
         task.map(ppn, vaddr.floor(), MappingFlags::URWX);  
     } else {  
         // 释放 pcb 锁以避免死锁  
@@ -225,7 +230,8 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
         else if vaddr.raw() >= 0x200000000 && vaddr.raw() < 0x300000000 {  
             warn!("Attempting to allocate Mmap (glibc) for vaddr: {:#x}", vaddr.raw());  
             let glibc_page_count = 1;  
-            if let Some(_) = task.frame_alloc(vaddr.floor(), MemType::Mmap, glibc_page_count) {  
+            if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, glibc_page_count) {
+                task.map(ppn, vaddr.floor(), MappingFlags::URWX);  
                 warn!("Successfully allocated Mmap (glibc) for vaddr: {:#x}", vaddr.raw());  
                 return;  
             } else {  

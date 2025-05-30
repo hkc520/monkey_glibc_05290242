@@ -60,6 +60,8 @@ pub struct ThreadControlBlock {
     pub signal_queue: [usize; REAL_TIME_SIGNAL_NUM], // a queue for real time signals
     pub exit_signal: u8,
     pub thread_exit_code: Option<u32>,
+    pub robust_list_head: usize,    // 添加 robust list 头指针
+    pub robust_list_len: usize,     // 添加 robust list 长度
 }
 
 #[allow(dead_code)]
@@ -116,6 +118,8 @@ impl UserTask {
             signal_queue: [0; REAL_TIME_SIGNAL_NUM],
             exit_signal: 0,
             thread_exit_code: Option::None,
+            robust_list_head: 0,            // 初始化为 0
+            robust_list_len: 0,             // 初始化为 0
         });
 
         let task = Arc::new(Self {
@@ -145,7 +149,15 @@ impl UserTask {
 
     #[inline]
     pub fn frame_alloc(&self, vaddr: VirtAddr, mtype: MemType, count: usize) -> Option<PhysAddr> {
-        self.map_frames(vaddr, mtype, count, None, 0, vaddr.raw(), count * PAGE_SIZE)
+        // 根据内存类型选择合适的权限
+        let mapping_flags = match mtype {
+            MemType::Stack => MappingFlags::URWX,      // 栈需要读写执行权限
+            MemType::CodeSection => MappingFlags::URWX, // 代码段默认读写执行（后续会根据ELF flags调整）
+            MemType::Mmap => MappingFlags::URWX,       // mmap区域默认读写执行
+            MemType::Shared => MappingFlags::URWX,     // 共享内存读写执行
+            MemType::ShareFile => MappingFlags::URW,   // 共享文件读写
+        };
+        self.map_frames(vaddr, mtype, count, None, 0, vaddr.raw(), count * PAGE_SIZE, mapping_flags)
     }
 
     pub fn map_frames(
@@ -157,6 +169,7 @@ impl UserTask {
         offset: usize,
         start: usize,
         len: usize,
+        mapping_flags: MappingFlags,
     ) -> Option<PhysAddr> {
         assert!(count > 0, "can't alloc count = 0 in user_task frame_alloc");
         // alloc trackers and map vpn
@@ -181,14 +194,14 @@ impl UserTask {
                 vaddr,
                 trackers[0].tracker.raw(),
                 count * PAGE_SIZE,
-                MappingFlags::URWX
+                mapping_flags
             );
             // map vpn to ppn
             trackers
                 .clone()
                 .iter()
                 .filter(|x| x.vaddr.raw() != 0)
-                .for_each(|x| self.map(x.tracker.0, x.vaddr, MappingFlags::URWX));
+                .for_each(|x| self.map(x.tracker.0, x.vaddr, mapping_flags));
         }
         let mut inner = self.pcb.lock();
         let ppn = trackers[0].tracker.0;
@@ -267,21 +280,17 @@ impl UserTask {
             // 清理线程列表
             pcb.threads.retain(|weak_ref| {
                 if let Some(thread) = weak_ref.upgrade() {
-                    thread.task_id != self.task_id  // 移除当前退出的线程
+                    thread.task_id != self.task_id
                 } else {
-                    false  // 移除已经释放的弱引用
+                    false
                 }
             });
             
             let remaining_threads = pcb.threads.len();
             let is_main_thread = self.task_id == self.process_id;
-            let pcb_ref_count = Arc::strong_count(&self.pcb);
             
-            warn!("Thread exit: task_id={}, process_id={}, is_main_thread={}, remaining_threads={}, pcb_refs={}", 
-                self.task_id, self.process_id, is_main_thread, remaining_threads, pcb_ref_count);
-            
-            // 只有在特定条件下才清理进程资源
-            (is_main_thread && remaining_threads == 0) || pcb_ref_count <= 1
+            // 更保守的清理条件：只有主线程退出且没有其他活跃线程时才清理
+            is_main_thread && remaining_threads == 0
         };
 
         if should_cleanup_process {
@@ -368,6 +377,8 @@ impl UserTask {
             signal_queue: [0; REAL_TIME_SIGNAL_NUM],
             exit_signal: 0,
             thread_exit_code: Option::None,
+            robust_list_head: 0,            // 新线程不继承父线程的 robust list
+            robust_list_len: 0,             // 新线程不继承父线程的 robust list
         });
 
         tcb.write().cx[TrapFrameArgs::RET] = 0;
@@ -576,28 +587,21 @@ impl AsyncTask for UserTask {
         let should_cleanup_process = {
             let mut pcb = self.pcb.lock();
             
-            // 设置退出代码
             pcb.exit_code = Some(exit_code);
             
-            // 清理线程列表
             pcb.threads.retain(|weak_ref| {
                 if let Some(thread) = weak_ref.upgrade() {
-                    thread.task_id != self.task_id  // 移除当前退出的线程
+                    thread.task_id != self.task_id
                 } else {
-                    false  // 移除已经释放的弱引用
+                    false
                 }
             });
             
             let remaining_threads = pcb.threads.len();
             let is_main_thread = self.task_id == self.process_id;
-            let pcb_ref_count = Arc::strong_count(&self.pcb);
             
-            warn!("Process exit: task_id={}, process_id={}, is_main_thread={}, remaining_threads={}, pcb_refs={}", 
-                self.task_id, self.process_id, is_main_thread, remaining_threads, pcb_ref_count);
-            
-            // 修改条件：只有主线程退出且没有其他线程，或者PCB只有一个引用时才清理
-            // 并且要确保当前进程ID与任务ID匹配（这是真正的进程退出）
-            (is_main_thread && remaining_threads == 0) || pcb_ref_count == 1
+            // 只有主线程退出且没有其他线程时才清理
+            is_main_thread && remaining_threads == 0
         };
 
         if should_cleanup_process {

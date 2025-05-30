@@ -53,8 +53,7 @@ impl UserTaskContainer {
             Sysno::getpid => self.sys_getpid().await,
             Sysno::pipe2 => self.sys_pipe2(args[0].into(), args[1] as _).await,
             Sysno::set_robust_list => {  
-                warn!("SYS_SET_ROBUST_LIST @ ");  
-                Ok(0)  
+                self.sys_set_robust_list(args[0] as _, args[1] as _).await  
             } // always ok for now
             Sysno::gettimeofday => self.sys_gettimeofday(args[0].into(), args[1] as _).await,
             Sysno::nanosleep => self.sys_nanosleep(args[0].into(), args[1].into()).await,
