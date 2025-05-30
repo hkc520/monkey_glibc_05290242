@@ -146,10 +146,19 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                 warn!("Failed to allocate Stack for vaddr: {:#x}", vaddr.raw());  
             }  
         }
-        else if vaddr.raw() < 0x1000 {
+        if vaddr.raw() < 0x1000 {
             warn!("Detected null pointer access for vaddr: {:#x}", vaddr.raw());
-            warn!("Accessing very low address: {:#x}, likely null pointer dereference", vaddr.raw());
-            task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
+            
+            // 检查是否已经发送过SIGSEGV信号
+            let mut tcb = task.tcb.write();
+            if !tcb.signal.has_sig(SignalFlags::SIGSEGV) {
+                tcb.signal.add_signal(SignalFlags::SIGSEGV);
+                warn!("Added SIGSEGV signal for null pointer access");
+            } else {
+                warn!("SIGSEGV already pending, terminating task");
+                // 强制退出任务以避免死循环
+                task.exit(128 + SignalFlags::SIGSEGV.num());
+            }
             return;
         }  
         // 新增：处理低地址区域（如 0x10690）  

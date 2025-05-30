@@ -54,7 +54,8 @@ impl UserTaskContainer {
             Sysno::pipe2 => self.sys_pipe2(args[0].into(), args[1] as _).await,
             Sysno::set_robust_list => {  
                 self.sys_set_robust_list(args[0] as _, args[1] as _).await  
-            } // always ok for now
+            }
+            Sysno::tgkill => self.sys_tgkill(args[0] as _, args[1] as _, args[2] as _).await,
             Sysno::gettimeofday => self.sys_gettimeofday(args[0].into(), args[1] as _).await,
             Sysno::nanosleep => self.sys_nanosleep(args[0].into(), args[1].into()).await,
             Sysno::uname => self.sys_uname(args[0].into()).await,

@@ -421,6 +421,53 @@ impl UserTaskContainer {
         }
     }
 
+    pub async fn sys_tgkill(&self, tgid: usize, tid: usize, signum: usize) -> SysResult {
+        debug!("sys_tgkill @ tgid: {}, tid: {}, signum: {}", tgid, tid, signum);
+        
+        // tgkill 向线程组中的特定线程发送信号
+        // tgid 是线程组ID（进程ID），tid 是线程ID
+        
+        let target_signal = SignalFlags::from_num(signum);
+        
+        // 查找目标线程
+        let mut target_thread = None;
+        
+        // 如果目标是当前线程
+        if tid == self.tid && tgid == self.task.process_id {
+            target_thread = Some(self.task.clone());
+        } else {
+            // 在当前进程的线程中查找
+            target_thread = self.task.inner_map(|x| {
+                x.threads
+                    .iter()
+                    .find_map(|weak_thread| {
+                        weak_thread.upgrade().and_then(|thread| {
+                            if thread.task_id == tid && thread.process_id == tgid {
+                                Some(thread)
+                            } else {
+                                None
+                            }
+                        })
+                    })
+            });
+        }
+        
+        match target_thread {
+            Some(thread) => {
+                let mut tcb = thread.tcb.write();
+                if !tcb.signal.has_sig(target_signal.clone()) {
+                    tcb.signal.add_signal(target_signal);
+                } else {
+                    if let Some(index) = target_signal.real_time_index() {
+                        tcb.signal_queue[index] += 1;
+                    }
+                }
+                Ok(0)
+            }
+            None => Err(Errno::ESRCH), // 没有找到指定的线程
+        }
+    }
+
     pub async fn sys_sigreturn(&self) -> SysResult {
         debug!("sys_sigreturn @ ");
         Ok(0)
