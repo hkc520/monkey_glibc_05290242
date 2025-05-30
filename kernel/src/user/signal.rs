@@ -60,10 +60,12 @@ impl UserTaskContainer {
 
         // alloc space for SignalUserContext at stack and align with 16 bytes.
         let sp = (cx_ref[TrapFrameArgs::SP] - 128 - size_of::<SignalUserContext>()) / 16 * 16;
+
         if sp < 0x2_0000_0000 || sp >= cx_ref[TrapFrameArgs::SP] {
             warn!("Invalid signal stack pointer: {:#x}", sp);
             return;
         }
+
         let cx: &mut SignalUserContext = UserRef::<SignalUserContext>::from(sp).get_mut();
         // change task context to do the signal.
         let mut tcb = self.task.tcb.write();
