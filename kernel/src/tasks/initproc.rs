@@ -1,7 +1,11 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 use crate::tasks::current_user_task;
+
+extern crate alloc;
+
 use alloc::sync::Arc;
+
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -135,218 +139,479 @@ async fn command(cmd: &str, work_dir: PathBuf) {
 }
 
 pub async fn initproc() {
-    set_libc_path("/musl/lib/libc.so".to_string());
-    println!("start kernel tasks");
-    set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
-    // 测试glibc程序
-    let glibc_home_dir = PathBuf::from("/glibc/basic");
-    command(
-        "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
-        glibc_home_dir.clone(),
-    )
-    .await;
-    command(
-        "/glibc/busybox sh /glibc/basic/run-all.sh",
-        glibc_home_dir.clone(),
-    )
-    .await;
-    command(
-        "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
-        glibc_home_dir.clone().clone(),
-    )
-    .await;
-    let glibc_home_dir = PathBuf::from("/glibc");
-    command(
-        "/glibc/busybox sh busybox_testcode.sh",
-        glibc_home_dir.clone(),
-    )
-    .await;
-    command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
-    command(
-        "/glibc/busybox sh libctest_testcode.sh",
-        glibc_home_dir.clone(),
-    )
-    .await;
-
-    //command("/musl/busybox ls /").await;
-    //command("/musl/busybox ls /bin").await;
-    //command("/musl/runtest.exe -w entry-dynamic.exe argv").await;
-    //command("/musl/entry-dynamic.exe argv").await;
-    //command("/musl/busybox echo run time-test").await;
-    //command("/musl/time-test").await;
-
-    //command("/musl/busybox sh basic/run-all.sh").await;
-    //command("busybox echo run netperf_testcode.sh").await;
-    // command("busybox sh netperf_testcode.sh").await;
-
-    //command("busybox echo run busybox_testcode.sh").await;
-    // command("busybox sh busybox_testcode.sh").await;
-
-    // command("busybox echo run libctest_testcode.sh").await;
-    //command("/musl/busybox sh ").await;
-    // command("runtest.exe -w entry-static.exe utime").await;
-    // command("busybox ln -s /busybox /bin/cat").await;
-    // command("./bin/cat libctest_testcode.sh").await;
-    // command("busybox ls -l /bin").await;
-    // command("busybox ln -s /busybox /bin/ln").await;
-    // command("busybox ln -s /busybox /bin/wget").await;
-    // command("busybox ln -s /busybox /bin/xz").await;
-    // command("busybox ls -l /bin").await;
-    // command("busybox sh init.sh").await;
-    ///command("/musl/busybox ls -l /bin").await;
-    //let home_dir = PathBuf::from("/");
-    // command(
-    //     "/musl/busybox ln -sf /musl/busybox /bin/ls",
-    //     home_dir.clone(),
-    // )
-    // .await;
-    //let home_dir = PathBuf::from("/musl");
-
-    /*command(
-            "/musl/busybox ln -s /musl/busybox /bin/ls",
-            home_dir.clone(),
-        )
-        .await;*/
-    //     let home_dir = PathBuf::from("/musl");
-    //    command("/musl/busybox sh ", home_dir.clone()).await;
-
-        /*  command(
-            "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl-musl ####",
+    #[cfg(not(target_arch = "loongarch64"))]
+    {
+        set_libc_path("/musl/lib/libc.so".to_string());
+        println!("start kernel tasks");
+        let home_dir = PathBuf::from("/musl/basic");
+        command(
+            "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
             home_dir.clone(),
         )
         .await;
         command("/musl/busybox sh /musl/basic/run-all.sh", home_dir.clone()).await;
         command(
-            "/musl/busybox echo #### OS COMP TEST GROUP END basic-musl-musl ####",
+            "/musl/busybox echo #### OS COMP TEST GROUP END basic-musl ####",
             home_dir.clone(),
         )
-        .await;*/
-    let home_dir = PathBuf::from("/musl/basic");
-    command(
-        "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
-        home_dir.clone(),
-    )
-    .await;
-    command("/musl/busybox sh /musl/basic/run-all.sh", home_dir.clone()).await;
-    command(
-        "/musl/busybox echo #### OS COMP TEST GROUP END basic-musl ####",
-        home_dir.clone(),
-    )
-    .await;
-    let home_dir = PathBuf::from("/musl");
-    command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
-    command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
-    command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
-    //command("/musl/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
-    //command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
-    // command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
-    // command("/musl/busybox sh run-static.sh", home_dir.clone()).await;
-    //command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
+        .await;
+        let home_dir = PathBuf::from("/musl");
+        command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
+        command(
+            "/musl/busybox echo #### OS COMP TEST GROUP END libctest-musl ####",
+            home_dir.clone().clone(),
+        )
+        .await;
+        command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
 
-    // command("/musl/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
-    //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
-    // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
-    // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
-    // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
-    set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
-    // 测试glibc程序
-    let glibc_home_dir = PathBuf::from("/glibc/basic");
-    command(
-        "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
-        glibc_home_dir.clone(),
-    )
-    .await;
-    command(
-        "/glibc/busybox sh /glibc/basic/run-all.sh",
-        glibc_home_dir.clone(),
-    )
-    .await;
-    command(
-        "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
-        glibc_home_dir.clone().clone(),
-    )
-    .await;
-    let glibc_home_dir = PathBuf::from("/glibc");
-    command(
-        "/glibc/busybox sh busybox_testcode.sh",
-        glibc_home_dir.clone(),
-    )
-    .await;
-    command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
-    command(
-        "/glibc/busybox sh libctest_testcode.sh",
-        glibc_home_dir.clone(),
-    )
-    .await;
+        command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
+        //command("/musl/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
+        //command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh run-static.sh", home_dir.clone()).await;
+        command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
 
-    //command("/musl/busybox sh basic_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
+        //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
+        set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+        let glibc_home_dir = PathBuf::from("/glibc/basic");
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox sh /glibc/basic/run-all.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
+            glibc_home_dir.clone().clone(),
+        )
+        .await;
 
-    // command("/musl/busybox sh", home_dir.clone()).await;
-    //let home_dir = PathBuf::from("/glibc");
-    //command("/glibc/busybox sh", home_dir.clone()).await;
-    /*command("/glibc/busybox sh libctest_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh busybox_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh run-dynamic.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh run-static.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh iperf_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh multi.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh libctest_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh run-static-all.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh iozone_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh lua_testcode.sh", home_dir.clone()).await;
-    command("/glibc/busybox sh basic_testcode.sh", home_dir.clone()).await;*/
+        let glibc_home_dir = PathBuf::from("/glibc");
 
-    //command("/musl/busybox sh", home_dir.clone()).await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START libctest-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        let glibc_exclude = vec![
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_robust_detach",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "setvbuf_unget",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_cancel_points",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_cancel",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_cond",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_tsd",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_cancel_sem_wait",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_cond_smasher",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_condattr_setclock",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_exit_cancel",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_once_deadlock",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_rwlock_ebusy",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_robust_detach",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "setvbuf_unget",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel_points",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cond",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_tsd",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel_sem_wait",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cond_smasher",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_condattr_setclock",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_exit_cancel",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_once_deadlock",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_rwlock_ebusy",
+                glibc_home_dir.clone(),
+            ),
+        ];
+        run_glibc_tests(glibc_home_dir.clone(), glibc_exclude).await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END libctest-glibc ####",
+            glibc_home_dir.clone().clone(),
+        )
+        .await;
+        // command(
+        //     "/glibc/busybox sh busybox_testcode.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        //.await;
+        command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox sh cyclictest_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+    }
 
-    //command("/musl/busybox sh /musl/libctest_testcode.sh").await; //有错误
-    //command("busybox sh libctest_testcode.sh");
-    // Get the current user task
-    //command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
-    // Execute the script with relative paths
-    // Execute the script with relative paths
-    // 获取当前用户任务
-    //let current_task = current_user_task();
-    // 打开 /musl 目录
-    // let musl_dir = File::open("/musl".into(), OpenFlags::O_DIRECTORY).expect("无法打开musl目录");
-    // 将当前目录设置为 /musl
-    // current_task.pcb.lock().curr_dir = Arc::new(musl_dir);
-    // 执行脚本，使用相对路径
-    // command("./busybox sh ./basic_testcode.sh").await;
-    // command("/musl/busybox sh -c 'cd /musl && ./busybox sh ./basic_testcode.sh'").await;
-    // command("busybox init").await;
-    // command("busybox sh").await;
-    // command("busybox sh init.sh").await;
+    #[cfg(target_arch = "loongarch64")]
+    {
+        set_libc_path("/musl/lib/libc.so".to_string());
+        println!("start kernel tasks");
+        set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+        let glibc_home_dir = PathBuf::from("/glibc/basic");
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox sh /glibc/basic/run-all.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
+            glibc_home_dir.clone().clone(),
+        )
+        .await;
 
-    // command("busybox echo run cyclic_testcode.sh").await;
-    // command("busybox sh cyclictest_testcode.sh").await;
-    // kill_all_tasks().await;
+        let glibc_home_dir = PathBuf::from("/glibc");
 
-    // command("busybox echo run iperf_testcode.sh").await;
-    // command("busybox sh iperf_testcode.sh").await;
-    // kill_all_tasks().await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START libctest-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        let glibc_exclude = vec![
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_robust_detach",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "setvbuf_unget",
+                glibc_home_dir.clone(),
+            ),
+        ];
+        run_glibc_tests(glibc_home_dir.clone(), glibc_exclude).await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END libctest-glibc ####",
+            glibc_home_dir.clone().clone(),
+        )
+        .await;
+        // command(
+        //     "/glibc/busybox sh busybox_testcode.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        //.await;
+        command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox sh cyclictest_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
 
-    // command("busybox echo run iozone_testcode.sh").await;
-    // command("busybox sh iozone_testcode.sh ").await;
+        let home_dir = PathBuf::from("/musl/basic");
+        command(
+            "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
+            home_dir.clone(),
+        )
+        .await;
+        command("/musl/busybox sh /musl/basic/run-all.sh", home_dir.clone()).await;
+        command(
+            "/musl/busybox echo #### OS COMP TEST GROUP END basic-musl ####",
+            home_dir.clone(),
+        )
+        .await;
+        let home_dir = PathBuf::from("/musl");
+        //command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
+        command(
+            "/musl/busybox echo #### OS COMP TEST GROUP START libctest-musl ####",
+            home_dir.clone(),
+        )
+        .await;
+        let musl_exclude = vec![
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_robust_detach",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "setvbuf_unget",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_cancel_points",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_cancel",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_cond",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_tsd",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_cancel_sem_wait",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_cond_smasher",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_condattr_setclock",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_exit_cancel",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_once_deadlock",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-static.exe",
+                "pthread_rwlock_ebusy",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_robust_detach",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "setvbuf_unget",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel_points",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cond",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_tsd",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel_sem_wait",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cond_smasher",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_condattr_setclock",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_exit_cancel",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_once_deadlock",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_rwlock_ebusy",
+                home_dir.clone(),
+            ),
+        ];
+        run_musl_tests(home_dir.clone(), musl_exclude).await;
+        command(
+            "/musl/busybox echo #### OS COMP TEST GROUP END libctest-musl ####",
+            home_dir.clone().clone(),
+        )
+        .await;
+        command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
+        command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
+        //command("/musl/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
+        //command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh run-static.sh", home_dir.clone()).await;
+        //command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
 
-    // command("busybox echo run lmbench_testcode.sh").await;
-    // command("busybox sh lmbench_testcode.sh").await;
-
-    // command("busybox echo run unixbench_testcode.sh").await;
-    // command("busybox sh unixbench_testcode.sh").await;
-
-    // command("copy-file-range-test-1").await;
-    // command("copy-file-range-test-2").await;
-    // command("copy-file-range-test-3").await;
-    // command("copy-file-range-test-4").await;
-    // command("interrupts-test-1").await;
-    // command("interrupts-test-2").await;
-
-    // switch_to_kernel_page_table();
+        // command("/musl/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
+        //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
+    }
     println!("!TEST FINISH!");
     shutdown();
 
@@ -362,5 +627,972 @@ pub async fn initproc() {
         .is_none()
     {
         shutdown();
+    }
+}
+async fn run_musl_tests(home_dir: PathBuf, exclude: Vec<(&str, &str, &str, PathBuf)>) {
+    let musl_static_tests = vec![
+        ("/musl/runtest.exe", "entry-static.exe", "argv"),
+        ("/musl/runtest.exe", "entry-static.exe", "basename"),
+        ("/musl/runtest.exe", "entry-static.exe", "clocale_mbfuncs"),
+        ("/musl/runtest.exe", "entry-static.exe", "clock_gettime"),
+        ("/musl/runtest.exe", "entry-static.exe", "dirname"),
+        ("/musl/runtest.exe", "entry-static.exe", "env"),
+        ("/musl/runtest.exe", "entry-static.exe", "fdopen"),
+        ("/musl/runtest.exe", "entry-static.exe", "fnmatch"),
+        ("/musl/runtest.exe", "entry-static.exe", "fscanf"),
+        ("/musl/runtest.exe", "entry-static.exe", "fwscanf"),
+        ("/musl/runtest.exe", "entry-static.exe", "iconv_open"),
+        ("/musl/runtest.exe", "entry-static.exe", "inet_pton"),
+        ("/musl/runtest.exe", "entry-static.exe", "mbc"),
+        ("/musl/runtest.exe", "entry-static.exe", "memstream"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_cancel_points",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "pthread_cancel"),
+        ("/musl/runtest.exe", "entry-static.exe", "pthread_cond"),
+        ("/musl/runtest.exe", "entry-static.exe", "pthread_tsd"),
+        ("/musl/runtest.exe", "entry-static.exe", "qsort"),
+        ("/musl/runtest.exe", "entry-static.exe", "random"),
+        ("/musl/runtest.exe", "entry-static.exe", "search_hsearch"),
+        ("/musl/runtest.exe", "entry-static.exe", "search_insque"),
+        ("/musl/runtest.exe", "entry-static.exe", "search_lsearch"),
+        ("/musl/runtest.exe", "entry-static.exe", "search_tsearch"),
+        ("/musl/runtest.exe", "entry-static.exe", "setjmp"),
+        ("/musl/runtest.exe", "entry-static.exe", "snprintf"),
+        ("/musl/runtest.exe", "entry-static.exe", "socket"),
+        ("/musl/runtest.exe", "entry-static.exe", "sscanf"),
+        ("/musl/runtest.exe", "entry-static.exe", "sscanf_long"),
+        ("/musl/runtest.exe", "entry-static.exe", "stat"),
+        ("/musl/runtest.exe", "entry-static.exe", "strftime"),
+        ("/musl/runtest.exe", "entry-static.exe", "string"),
+        ("/musl/runtest.exe", "entry-static.exe", "string_memcpy"),
+        ("/musl/runtest.exe", "entry-static.exe", "string_memmem"),
+        ("/musl/runtest.exe", "entry-static.exe", "string_memset"),
+        ("/musl/runtest.exe", "entry-static.exe", "string_strchr"),
+        ("/musl/runtest.exe", "entry-static.exe", "string_strcspn"),
+        ("/musl/runtest.exe", "entry-static.exe", "string_strstr"),
+        ("/musl/runtest.exe", "entry-static.exe", "strptime"),
+        ("/musl/runtest.exe", "entry-static.exe", "strtod"),
+        ("/musl/runtest.exe", "entry-static.exe", "strtod_simple"),
+        ("/musl/runtest.exe", "entry-static.exe", "strtof"),
+        ("/musl/runtest.exe", "entry-static.exe", "strtol"),
+        ("/musl/runtest.exe", "entry-static.exe", "strtold"),
+        ("/musl/runtest.exe", "entry-static.exe", "swprintf"),
+        ("/musl/runtest.exe", "entry-static.exe", "tgmath"),
+        ("/musl/runtest.exe", "entry-static.exe", "time"),
+        ("/musl/runtest.exe", "entry-static.exe", "tls_align"),
+        ("/musl/runtest.exe", "entry-static.exe", "udiv"),
+        ("/musl/runtest.exe", "entry-static.exe", "ungetc"),
+        ("/musl/runtest.exe", "entry-static.exe", "utime"),
+        ("/musl/runtest.exe", "entry-static.exe", "wcsstr"),
+        ("/musl/runtest.exe", "entry-static.exe", "wcstol"),
+        ("/musl/runtest.exe", "entry-static.exe", "daemon_failure"),
+        ("/musl/runtest.exe", "entry-static.exe", "dn_expand_empty"),
+        ("/musl/runtest.exe", "entry-static.exe", "dn_expand_ptr_0"),
+        ("/musl/runtest.exe", "entry-static.exe", "fflush_exit"),
+        ("/musl/runtest.exe", "entry-static.exe", "fgets_eof"),
+        ("/musl/runtest.exe", "entry-static.exe", "fgetwc_buffering"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "fpclassify_invalid_ld80",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "ftello_unflushed_append",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "getpwnam_r_crash"),
+        ("/musl/runtest.exe", "entry-static.exe", "getpwnam_r_errno"),
+        ("/musl/runtest.exe", "entry-static.exe", "iconv_roundtrips"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "inet_ntop_v4mapped",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "inet_pton_empty_last_field",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "iswspace_null"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "lrand48_signextend",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "lseek_large"),
+        ("/musl/runtest.exe", "entry-static.exe", "malloc_0"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "mbsrtowcs_overflow",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "memmem_oob_read"),
+        ("/musl/runtest.exe", "entry-static.exe", "memmem_oob"),
+        ("/musl/runtest.exe", "entry-static.exe", "mkdtemp_failure"),
+        ("/musl/runtest.exe", "entry-static.exe", "mkstemp_failure"),
+        ("/musl/runtest.exe", "entry-static.exe", "printf_1e9_oob"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "printf_fmt_g_round",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "printf_fmt_g_zeros",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "printf_fmt_n"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_robust_detach",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_cancel_sem_wait",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_cond_smasher",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_condattr_setclock",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_exit_cancel",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_once_deadlock",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_rwlock_ebusy",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "putenv_doublefree"),
+        ("/musl/runtest.exe", "entry-static.exe", "regex_backref_0"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "regex_bracket_icase",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "regex_ere_backref"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "regex_escaped_high_byte",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "regex_negated_range",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "regexec_nosub"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "rewind_clear_error",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "rlimit_open_files"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "scanf_bytes_consumed",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "scanf_match_literal_eof",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "scanf_nullbyte_char",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "setvbuf_unget"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "sigprocmask_internal",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "sscanf_eof"),
+        ("/musl/runtest.exe", "entry-static.exe", "statvfs"),
+        ("/musl/runtest.exe", "entry-static.exe", "strverscmp"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "syscall_sign_extend",
+        ),
+        ("/musl/runtest.exe", "entry-static.exe", "uselocale_0"),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "wcsncpy_read_overflow",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "wcsstr_false_negative",
+        ),
+    ];
+
+    let musl_dynamic_tests = vec![
+        ("/musl/runtest.exe", "entry-dynamic.exe", "argv"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "basename"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "clocale_mbfuncs"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "clock_gettime"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "dirname"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "dlopen"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "env"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "fdopen"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "fnmatch"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "fscanf"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "fwscanf"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "iconv_open"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "inet_pton"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "mbc"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "memstream"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_cancel_points",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "pthread_cancel"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "pthread_cond"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "pthread_tsd"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "qsort"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "random"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "search_hsearch"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "search_insque"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "search_lsearch"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "search_tsearch"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "sem_init"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "setjmp"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "snprintf"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "socket"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "sscanf"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "sscanf_long"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "stat"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "strftime"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "string"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "string_memcpy"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "string_memmem"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "string_memset"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "string_strchr"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "string_strcspn"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "string_strstr"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "strptime"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "strtod"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "strtod_simple"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "strtof"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "strtol"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "strtold"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "swprintf"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "tgmath"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "time"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "tls_init"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "tls_local_exec"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "udiv"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "ungetc"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "utime"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "wcsstr"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "wcstol"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "daemon_failure"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "dn_expand_empty"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "dn_expand_ptr_0"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "fflush_exit"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "fgets_eof"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "fgetwc_buffering"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "fpclassify_invalid_ld80",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "ftello_unflushed_append",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "getpwnam_r_crash"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "getpwnam_r_errno"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "iconv_roundtrips"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "inet_ntop_v4mapped",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "inet_pton_empty_last_field",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "iswspace_null"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "lrand48_signextend",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "lseek_large"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "malloc_0"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "mbsrtowcs_overflow",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "memmem_oob_read"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "memmem_oob"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "mkdtemp_failure"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "mkstemp_failure"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "printf_1e9_oob"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "printf_fmt_g_round",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "printf_fmt_g_zeros",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "printf_fmt_n"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_robust_detach",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_cond_smasher",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_condattr_setclock",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_exit_cancel",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_once_deadlock",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_rwlock_ebusy",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "putenv_doublefree",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "regex_backref_0"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "regex_bracket_icase",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "regex_ere_backref",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "regex_escaped_high_byte",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "regex_negated_range",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "regexec_nosub"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "rewind_clear_error",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "rlimit_open_files",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "scanf_bytes_consumed",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "scanf_match_literal_eof",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "scanf_nullbyte_char",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "setvbuf_unget"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "sigprocmask_internal",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "sscanf_eof"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "statvfs"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "strverscmp"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "syscall_sign_extend",
+        ),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "tls_get_new_dtv"),
+        ("/musl/runtest.exe", "entry-dynamic.exe", "uselocale_0"),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "wcsncpy_read_overflow",
+        ),
+        (
+            "/musl/runtest.exe",
+            "entry-dynamic.exe",
+            "wcsstr_false_negative",
+        ),
+    ];
+
+    for tests in vec![musl_static_tests, musl_dynamic_tests] {
+        for (runtest, entry, test_name) in tests {
+            let test_dir = home_dir.clone();
+            if !exclude
+                .iter()
+                .any(|&(ex_runtest, ex_entry, ex_test_name, ref ex_dir)| {
+                    ex_runtest == runtest
+                        && ex_entry == entry
+                        && ex_test_name == test_name
+                        && ex_dir == &test_dir
+                })
+            {
+                command(
+                    &alloc::format!("{} -w {} {}", runtest, entry, test_name),
+                    test_dir,
+                )
+                .await;
+            }
+        }
+    }
+}
+
+async fn run_glibc_tests(glibc_home_dir: PathBuf, exclude: Vec<(&str, &str, &str, PathBuf)>) {
+    let glibc_static_tests = vec![
+        ("/glibc/runtest.exe", "entry-static.exe", "argv"),
+        ("/glibc/runtest.exe", "entry-static.exe", "basename"),
+        ("/glibc/runtest.exe", "entry-static.exe", "clocale_mbfuncs"),
+        ("/glibc/runtest.exe", "entry-static.exe", "clock_gettime"),
+        ("/glibc/runtest.exe", "entry-static.exe", "dirname"),
+        ("/glibc/runtest.exe", "entry-static.exe", "env"),
+        ("/glibc/runtest.exe", "entry-static.exe", "fdopen"),
+        ("/glibc/runtest.exe", "entry-static.exe", "fnmatch"),
+        ("/glibc/runtest.exe", "entry-static.exe", "fscanf"),
+        ("/glibc/runtest.exe", "entry-static.exe", "fwscanf"),
+        ("/glibc/runtest.exe", "entry-static.exe", "iconv_open"),
+        ("/glibc/runtest.exe", "entry-static.exe", "inet_pton"),
+        ("/glibc/runtest.exe", "entry-static.exe", "mbc"),
+        ("/glibc/runtest.exe", "entry-static.exe", "memstream"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "pthread_cancel_points",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "pthread_cancel"),
+        ("/glibc/runtest.exe", "entry-static.exe", "pthread_cond"),
+        ("/glibc/runtest.exe", "entry-static.exe", "pthread_tsd"),
+        ("/glibc/runtest.exe", "entry-static.exe", "qsort"),
+        ("/glibc/runtest.exe", "entry-static.exe", "random"),
+        ("/glibc/runtest.exe", "entry-static.exe", "search_hsearch"),
+        ("/glibc/runtest.exe", "entry-static.exe", "search_insque"),
+        ("/glibc/runtest.exe", "entry-static.exe", "search_lsearch"),
+        ("/glibc/runtest.exe", "entry-static.exe", "search_tsearch"),
+        ("/glibc/runtest.exe", "entry-static.exe", "setjmp"),
+        ("/glibc/runtest.exe", "entry-static.exe", "snprintf"),
+        ("/glibc/runtest.exe", "entry-static.exe", "socket"),
+        ("/glibc/runtest.exe", "entry-static.exe", "sscanf"),
+        ("/glibc/runtest.exe", "entry-static.exe", "sscanf_long"),
+        ("/glibc/runtest.exe", "entry-static.exe", "stat"),
+        ("/glibc/runtest.exe", "entry-static.exe", "strftime"),
+        ("/glibc/runtest.exe", "entry-static.exe", "string"),
+        ("/glibc/runtest.exe", "entry-static.exe", "string_memcpy"),
+        ("/glibc/runtest.exe", "entry-static.exe", "string_memmem"),
+        ("/glibc/runtest.exe", "entry-static.exe", "string_memset"),
+        ("/glibc/runtest.exe", "entry-static.exe", "string_strchr"),
+        ("/glibc/runtest.exe", "entry-static.exe", "string_strcspn"),
+        ("/glibc/runtest.exe", "entry-static.exe", "string_strstr"),
+        ("/glibc/runtest.exe", "entry-static.exe", "strptime"),
+        ("/glibc/runtest.exe", "entry-static.exe", "strtod"),
+        ("/glibc/runtest.exe", "entry-static.exe", "strtod_simple"),
+        ("/glibc/runtest.exe", "entry-static.exe", "strtof"),
+        ("/glibc/runtest.exe", "entry-static.exe", "strtol"),
+        ("/glibc/runtest.exe", "entry-static.exe", "strtold"),
+        ("/glibc/runtest.exe", "entry-static.exe", "swprintf"),
+        ("/glibc/runtest.exe", "entry-static.exe", "tgmath"),
+        ("/glibc/runtest.exe", "entry-static.exe", "time"),
+        ("/glibc/runtest.exe", "entry-static.exe", "tls_align"),
+        ("/glibc/runtest.exe", "entry-static.exe", "udiv"),
+        ("/glibc/runtest.exe", "entry-static.exe", "ungetc"),
+        ("/glibc/runtest.exe", "entry-static.exe", "utime"),
+        ("/glibc/runtest.exe", "entry-static.exe", "wcsstr"),
+        ("/glibc/runtest.exe", "entry-static.exe", "wcstol"),
+        ("/glibc/runtest.exe", "entry-static.exe", "daemon_failure"),
+        ("/glibc/runtest.exe", "entry-static.exe", "dn_expand_empty"),
+        ("/glibc/runtest.exe", "entry-static.exe", "dn_expand_ptr_0"),
+        ("/glibc/runtest.exe", "entry-static.exe", "fflush_exit"),
+        ("/glibc/runtest.exe", "entry-static.exe", "fgets_eof"),
+        ("/glibc/runtest.exe", "entry-static.exe", "fgetwc_buffering"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "fpclassify_invalid_ld80",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "ftello_unflushed_append",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "getpwnam_r_crash"),
+        ("/glibc/runtest.exe", "entry-static.exe", "getpwnam_r_errno"),
+        ("/glibc/runtest.exe", "entry-static.exe", "iconv_roundtrips"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "inet_ntop_v4mapped",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "inet_pton_empty_last_field",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "iswspace_null"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "lrand48_signextend",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "lseek_large"),
+        ("/glibc/runtest.exe", "entry-static.exe", "malloc_0"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "mbsrtowcs_overflow",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "memmem_oob_read"),
+        ("/glibc/runtest.exe", "entry-static.exe", "memmem_oob"),
+        ("/glibc/runtest.exe", "entry-static.exe", "mkdtemp_failure"),
+        ("/glibc/runtest.exe", "entry-static.exe", "mkstemp_failure"),
+        ("/glibc/runtest.exe", "entry-static.exe", "printf_1e9_oob"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "printf_fmt_g_round",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "printf_fmt_g_zeros",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "printf_fmt_n"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "pthread_robust_detach",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "pthread_cancel_sem_wait",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "pthread_cond_smasher",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "pthread_condattr_setclock",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "pthread_exit_cancel",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "pthread_once_deadlock",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "pthread_rwlock_ebusy",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "putenv_doublefree",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "regex_backref_0"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "regex_bracket_icase",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "regex_ere_backref",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "regex_escaped_high_byte",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "regex_negated_range",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "regexec_nosub"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "rewind_clear_error",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "rlimit_open_files",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "scanf_bytes_consumed",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "scanf_match_literal_eof",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "scanf_nullbyte_char",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "setvbuf_unget"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "sigprocmask_internal",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "sscanf_eof"),
+        ("/glibc/runtest.exe", "entry-static.exe", "statvfs"),
+        ("/glibc/runtest.exe", "entry-static.exe", "strverscmp"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "syscall_sign_extend",
+        ),
+        ("/glibc/runtest.exe", "entry-static.exe", "uselocale_0"),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "wcsncpy_read_overflow",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-static.exe",
+            "wcsstr_false_negative",
+        ),
+    ];
+
+    let glibc_dynamic_tests = vec![
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "argv"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "basename"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "clocale_mbfuncs"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "clock_gettime"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "dirname"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "dlopen"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "env"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "fdopen"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "fnmatch"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "fscanf"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "fwscanf"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "iconv_open"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "inet_pton"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "mbc"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "memstream"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_cancel_points",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "pthread_cancel"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "pthread_cond"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "pthread_tsd"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "qsort"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "random"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "search_hsearch"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "search_insque"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "search_lsearch"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "search_tsearch"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "sem_init"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "setjmp"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "snprintf"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "socket"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "sscanf"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "sscanf_long"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "stat"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "strftime"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "string"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "string_memcpy"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "string_memmem"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "string_memset"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "string_strchr"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "string_strcspn"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "string_strstr"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "strptime"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "strtod"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "strtod_simple"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "strtof"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "strtol"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "strtold"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "swprintf"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "tgmath"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "time"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "tls_init"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "tls_local_exec"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "udiv"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "ungetc"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "utime"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "wcsstr"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "wcstol"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "daemon_failure"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "dn_expand_empty"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "dn_expand_ptr_0"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "fflush_exit"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "fgets_eof"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "fgetwc_buffering",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "fpclassify_invalid_ld80",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "ftello_unflushed_append",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "getpwnam_r_crash",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "getpwnam_r_errno",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "iconv_roundtrips",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "inet_ntop_v4mapped",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "inet_pton_empty_last_field",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "iswspace_null"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "lrand48_signextend",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "lseek_large"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "malloc_0"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "mbsrtowcs_overflow",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "memmem_oob_read"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "memmem_oob"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "mkdtemp_failure"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "mkstemp_failure"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "printf_1e9_oob"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "printf_fmt_g_round",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "printf_fmt_g_zeros",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "printf_fmt_n"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_robust_detach",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_cond_smasher",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_condattr_setclock",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_exit_cancel",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_once_deadlock",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "pthread_rwlock_ebusy",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "putenv_doublefree",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "regex_backref_0"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "regex_bracket_icase",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "regex_ere_backref",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "regex_escaped_high_byte",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "regex_negated_range",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "regexec_nosub"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "rewind_clear_error",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "rlimit_open_files",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "scanf_bytes_consumed",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "scanf_match_literal_eof",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "scanf_nullbyte_char",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "setvbuf_unget"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "sigprocmask_internal",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "sscanf_eof"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "statvfs"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "strverscmp"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "syscall_sign_extend",
+        ),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "tls_get_new_dtv"),
+        ("/glibc/runtest.exe", "entry-dynamic.exe", "uselocale_0"),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "wcsncpy_read_overflow",
+        ),
+        (
+            "/glibc/runtest.exe",
+            "entry-dynamic.exe",
+            "wcsstr_false_negative",
+        ),
+    ];
+
+    for tests in vec![glibc_static_tests, glibc_dynamic_tests] {
+        for (runtest, entry, test_name) in tests {
+            let test_dir = glibc_home_dir.clone();
+            if !exclude
+                .iter()
+                .any(|&(ex_runtest, ex_entry, ex_test_name, ref ex_dir)| {
+                    ex_runtest == runtest
+                        && ex_entry == entry
+                        && ex_test_name == test_name
+                        && ex_dir == &test_dir
+                })
+            {
+                command(
+                    &alloc::format!("{} -w {} {}", runtest, entry, test_name),
+                    test_dir,
+                )
+                .await;
+            }
+        }
     }
 }

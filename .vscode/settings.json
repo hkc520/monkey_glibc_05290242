@@ -6,7 +6,7 @@
   "rust-analyzer.cargo.target": "loongarch64-unknown-linux-musl",
   "rust-analyzer.cargo.extraEnv": {
     "CARGO_BUILD_TARGET": "loongarch64-unknown-linux-musl",
-    "RUSTFLAGS": "-Clink-arg=-no-pie --cfg=root_fs=\"ext4\"",
+    "RUSTFLAGS": "-Clink-arg=-no-pie --cfg=root_fs=\"ext4\" --cfg=loongarch --cfg=riscv",
     "BOARD": "qemu",
     "ROOT_MANIFEST_DIR": "${workspaceFolder}"
   },
