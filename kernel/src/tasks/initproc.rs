@@ -353,11 +353,11 @@ pub async fn initproc() {
             glibc_home_dir.clone().clone(),
         )
         .await;
-        // command(
-        //     "/glibc/busybox sh busybox_testcode.sh",
-        //     glibc_home_dir.clone(),
-        // )
-        //.await;
+        command(
+            "/glibc/busybox sh busybox_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
         command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox sh cyclictest_testcode.sh",
@@ -370,63 +370,6 @@ pub async fn initproc() {
     {
         set_libc_path("/musl/lib/libc.so".to_string());
         println!("start kernel tasks");
-        set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
-        let glibc_home_dir = PathBuf::from("/glibc/basic");
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox sh /glibc/basic/run-all.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
-            glibc_home_dir.clone().clone(),
-        )
-        .await;
-
-        let glibc_home_dir = PathBuf::from("/glibc");
-
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP START libctest-glibc ####",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        let glibc_exclude = vec![
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_robust_detach",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "setvbuf_unget",
-                glibc_home_dir.clone(),
-            ),
-        ];
-        run_glibc_tests(glibc_home_dir.clone(), glibc_exclude).await;
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP END libctest-glibc ####",
-            glibc_home_dir.clone().clone(),
-        )
-        .await;
-        // command(
-        //     "/glibc/busybox sh busybox_testcode.sh",
-        //     glibc_home_dir.clone(),
-        // )
-        //.await;
-        command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox sh cyclictest_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
         let home_dir = PathBuf::from("/musl/basic");
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
@@ -611,6 +554,62 @@ pub async fn initproc() {
         // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
         // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
+        set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+        let glibc_home_dir = PathBuf::from("/glibc/basic");
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox sh /glibc/basic/run-all.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
+            glibc_home_dir.clone().clone(),
+        )
+        .await;
+
+        let glibc_home_dir = PathBuf::from("/glibc");
+
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START libctest-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        let glibc_exclude = vec![
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "pthread_robust_detach",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-static.exe",
+                "setvbuf_unget",
+                glibc_home_dir.clone(),
+            ),
+        ];
+        run_glibc_tests(glibc_home_dir.clone(), glibc_exclude).await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END libctest-glibc ####",
+            glibc_home_dir.clone().clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox sh busybox_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox sh cyclictest_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
     }
     println!("!TEST FINISH!");
     shutdown();
