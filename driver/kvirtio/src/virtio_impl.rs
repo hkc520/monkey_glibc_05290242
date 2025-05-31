@@ -1,18 +1,25 @@
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 use devices::{frame_alloc_much, utils::virt_to_phys, FrameTracker, Mutex, VIRT_ADDR_START};
+use log::info;
 use log::trace;
 use virtio_drivers::{BufferDirection, Hal, PhysAddr};
-
 static VIRTIO_CONTAINER: Mutex<Vec<FrameTracker>> = Mutex::new(Vec::new());
 
 pub struct HalImpl;
 
 unsafe impl Hal for HalImpl {
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
+        info!("DEBUG: VirtIO DMA alloc requested for {} pages", pages);
         let trackers = frame_alloc_much(pages).expect("can't alloc page in virtio");
         let paddr = trackers[0].0;
         let vaddr = NonNull::new(paddr.get_mut_ptr()).unwrap();
+        info!(
+            "DEBUG: VirtIO DMA allocated - paddr={:#x}, vaddr={:#x}, pages={}",
+            paddr.raw(),
+            vaddr.as_ptr() as usize,
+            pages
+        );
         trace!("alloc DMA: paddr={:#x}, pages={:?}", paddr.raw(), trackers);
         VIRTIO_CONTAINER.lock().extend(trackers.into_iter());
         (paddr.raw(), vaddr)
@@ -36,7 +43,14 @@ unsafe impl Hal for HalImpl {
     }
 
     unsafe fn mmio_phys_to_virt(paddr: PhysAddr, _size: usize) -> NonNull<u8> {
-        NonNull::new((usize::from(paddr) | VIRT_ADDR_START) as *mut u8).unwrap()
+        let vaddr = (usize::from(paddr) | 0x8000_0000_0000_0000) as *mut u8;
+        info!("Mapping paddr {:#x} to vaddr {:#x}", paddr, vaddr as usize);
+
+        // 尝试读取映射后的地址
+        let test_read = core::ptr::read_volatile(vaddr as *const u32);
+        info!("Test read from vaddr: {:#x}", test_read);
+
+        NonNull::new(vaddr).unwrap()
     }
 
     unsafe fn share(buffer: NonNull<[u8]>, _direction: BufferDirection) -> PhysAddr {

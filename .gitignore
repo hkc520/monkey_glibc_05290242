@@ -11,3 +11,9 @@ Makefile.local
 byteos
 byteos.yaml
 tftp-burn.sh
+qemu-9.2.1
+riscv
+loongarch64-unknown-linux-musl
+cross-tools
+scripts
+loongarch64-linux-musl-cross

@@ -52,10 +52,11 @@ impl UserTaskContainer {
             Sysno::brk => self.sys_brk(args[0] as _).await,
             Sysno::getpid => self.sys_getpid().await,
             Sysno::pipe2 => self.sys_pipe2(args[0].into(), args[1] as _).await,
-            Sysno::set_robust_list => {  
-                self.sys_set_robust_list(args[0] as _, args[1] as _).await  
+            Sysno::set_robust_list => self.sys_set_robust_list(args[0] as _, args[1] as _).await,
+            Sysno::tgkill => {
+                self.sys_tgkill(args[0] as _, args[1] as _, args[2] as _)
+                    .await
             }
-            Sysno::tgkill => self.sys_tgkill(args[0] as _, args[1] as _, args[2] as _).await,
             Sysno::gettimeofday => self.sys_gettimeofday(args[0].into(), args[1] as _).await,
             Sysno::nanosleep => self.sys_nanosleep(args[0].into(), args[1].into()).await,
             Sysno::uname => self.sys_uname(args[0].into()).await,
@@ -196,7 +197,8 @@ impl UserTaskContainer {
             Sysno::tkill => self.sys_tkill(args[0] as _, args[1] as _).await,
             Sysno::rt_sigreturn => self.sys_sigreturn().await,
             Sysno::get_robust_list => {
-                self.sys_get_robust_list(args[0] as _, args[1] as _, args[2] as _).await
+                self.sys_get_robust_list(args[0] as _, args[1] as _, args[2] as _)
+                    .await
             }
             Sysno::ppoll => {
                 self.sys_ppoll(args[0].into(), args[1] as _, args[2].into(), args[3] as _)

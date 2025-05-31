@@ -49,15 +49,29 @@ impl<T: Transport + 'static> BlkDriver for VirtIOBlock<T> {
     }
 }
 
-pub fn init<T: Transport + 'static>(transport: T, irqs: Vec<u32>) -> Arc<dyn Driver> {
-    let blk_device = Arc::new(VirtIOBlock {
-        inner: Mutex::new(
-            VirtIOBlk::<HalImpl, T>::new(transport).expect("failed to create blk driver"),
-        ),
-        irqs,
-    });
+pub fn init<T: Transport + 'static>(mut transport: T, irqs: Vec<u32>) -> Arc<dyn Driver> {
+    info!("Starting VirtIO block device initialization");
+    info!("IRQs: {:?}", irqs);
 
-    register_device_irqs(blk_device.clone());
-    info!("Initailize virtio-block device");
+    // 验证transport状态
+    info!("Transport device type: {:?}", transport.device_type());
+    info!("Transport status: {:?}", transport.get_status());
+
+    info!("About to create VirtIOBlk device...");
+    let blk_device = match VirtIOBlk::<HalImpl, T>::new(transport) {
+        Ok(device) => {
+            info!("VirtIOBlk device created successfully");
+            Arc::new(VirtIOBlock {
+                inner: Mutex::new(device),
+                irqs,
+            })
+        }
+        Err(e) => {
+            error!("Failed to create VirtIOBlk device: {:?}", e);
+            panic!("VirtIOBlk device creation failed: {:?}", e);
+        }
+    };
+
+    info!("VirtIO block device initialized successfully");
     blk_device
 }

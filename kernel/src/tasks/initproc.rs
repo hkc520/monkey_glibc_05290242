@@ -27,7 +27,7 @@ use super::UserTask;
 
 /*Add：全局配置libc.so的路径 */
 static LIBC_PATH: Mutex<String> = Mutex::new(String::new());
-static GLIBC_PATH: Mutex<String> = Mutex::new(String::new()); 
+static GLIBC_PATH: Mutex<String> = Mutex::new(String::new());
 
 pub fn set_libc_path(path: String) {
     *LIBC_PATH.lock() = path;
@@ -37,13 +37,13 @@ pub fn get_libc_path() -> String {
     LIBC_PATH.lock().clone()
 }
 
-pub fn set_glibc_path(path: String) {  
-    *GLIBC_PATH.lock() = path;  
-}  
-  
-pub fn get_glibc_path() -> String {  
-    GLIBC_PATH.lock().clone()  
-}  
+pub fn set_glibc_path(path: String) {
+    *GLIBC_PATH.lock() = path;
+}
+
+pub fn get_glibc_path() -> String {
+    GLIBC_PATH.lock().clone()
+}
 fn clear() {
     DebugConsole::putchar(0x1b);
     DebugConsole::putchar(0x5b);
@@ -137,6 +137,37 @@ async fn command(cmd: &str, work_dir: PathBuf) {
 pub async fn initproc() {
     set_libc_path("/musl/lib/libc.so".to_string());
     println!("start kernel tasks");
+    set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+    // 测试glibc程序
+    let glibc_home_dir = PathBuf::from("/glibc/basic");
+    command(
+        "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
+        glibc_home_dir.clone(),
+    )
+    .await;
+    command(
+        "/glibc/busybox sh /glibc/basic/run-all.sh",
+        glibc_home_dir.clone(),
+    )
+    .await;
+    command(
+        "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
+        glibc_home_dir.clone().clone(),
+    )
+    .await;
+    let glibc_home_dir = PathBuf::from("/glibc");
+    command(
+        "/glibc/busybox sh busybox_testcode.sh",
+        glibc_home_dir.clone(),
+    )
+    .await;
+    command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+    command(
+        "/glibc/busybox sh libctest_testcode.sh",
+        glibc_home_dir.clone(),
+    )
+    .await;
+
     //command("/musl/busybox ls /").await;
     //command("/musl/busybox ls /bin").await;
     //command("/musl/runtest.exe -w entry-dynamic.exe argv").await;
@@ -172,72 +203,82 @@ pub async fn initproc() {
     //let home_dir = PathBuf::from("/musl");
 
     /*command(
-        "/musl/busybox ln -s /musl/busybox /bin/ls",
-        home_dir.clone(),
-    )
-    .await;*/
-//     let home_dir = PathBuf::from("/musl");
-//    command("/musl/busybox sh ", home_dir.clone()).await;
+            "/musl/busybox ln -s /musl/busybox /bin/ls",
+            home_dir.clone(),
+        )
+        .await;*/
+    //     let home_dir = PathBuf::from("/musl");
+    //    command("/musl/busybox sh ", home_dir.clone()).await;
 
-    /*  command(
-        "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl-musl ####",
-        home_dir.clone(),
-    )
-    .await;
-    command("/musl/busybox sh /musl/basic/run-all.sh", home_dir.clone()).await;
-    command(
-        "/musl/busybox echo #### OS COMP TEST GROUP END basic-musl-musl ####",
-        home_dir.clone(),
-    )
-    .await;*/
-
-
-     let home_dir = PathBuf::from("/musl/basic");
-     command(
-            "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
+        /*  command(
+            "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl-musl ####",
             home_dir.clone(),
         )
         .await;
         command("/musl/busybox sh /musl/basic/run-all.sh", home_dir.clone()).await;
         command(
-            "/musl/busybox echo #### OS COMP TEST GROUP END basic-musl ####",
+            "/musl/busybox echo #### OS COMP TEST GROUP END basic-musl-musl ####",
             home_dir.clone(),
         )
-        .await;
-        let home_dir = PathBuf::from("/musl");
-        command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
-        command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
-        command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
-        command("/musl/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
-        command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
-        command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
-        command("/musl/busybox sh run-static.sh", home_dir.clone()).await;
-        //command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
-
-
-        // command("/musl/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
-        //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
-        // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
-        // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
-        // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
-    set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string()); 
-    // 测试glibc程序  
-    let glibc_home_dir = PathBuf::from("/glibc/basic");  
-    command(  
-        "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",  
-        glibc_home_dir.clone(),  
-    ).await;  
-    command("/glibc/busybox sh /glibc/basic/run-all.sh", glibc_home_dir.clone()).await;
+        .await;*/
+    let home_dir = PathBuf::from("/musl/basic");
     command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
-            glibc_home_dir.clone().clone(),
-        )
-        .await;
-    let glibc_home_dir = PathBuf::from("/glibc");  
-        
-        command("/glibc/busybox sh libctest_testcode.sh", glibc_home_dir.clone()).await;
-        command("/glibc/busybox sh busybox_testcode.sh", glibc_home_dir.clone()).await;
-        command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+        "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
+        home_dir.clone(),
+    )
+    .await;
+    command("/musl/busybox sh /musl/basic/run-all.sh", home_dir.clone()).await;
+    command(
+        "/musl/busybox echo #### OS COMP TEST GROUP END basic-musl ####",
+        home_dir.clone(),
+    )
+    .await;
+    let home_dir = PathBuf::from("/musl");
+    command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
+    command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
+    command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
+    //command("/musl/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
+    //command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
+    // command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
+    // command("/musl/busybox sh run-static.sh", home_dir.clone()).await;
+    //command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
+
+    // command("/musl/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
+    //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
+    // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
+    // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
+    // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
+    set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+    // 测试glibc程序
+    let glibc_home_dir = PathBuf::from("/glibc/basic");
+    command(
+        "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
+        glibc_home_dir.clone(),
+    )
+    .await;
+    command(
+        "/glibc/busybox sh /glibc/basic/run-all.sh",
+        glibc_home_dir.clone(),
+    )
+    .await;
+    command(
+        "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
+        glibc_home_dir.clone().clone(),
+    )
+    .await;
+    let glibc_home_dir = PathBuf::from("/glibc");
+    command(
+        "/glibc/busybox sh busybox_testcode.sh",
+        glibc_home_dir.clone(),
+    )
+    .await;
+    command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+    command(
+        "/glibc/busybox sh libctest_testcode.sh",
+        glibc_home_dir.clone(),
+    )
+    .await;
+
     //command("/musl/busybox sh basic_testcode.sh", home_dir.clone()).await;
 
     // command("/musl/busybox sh", home_dir.clone()).await;

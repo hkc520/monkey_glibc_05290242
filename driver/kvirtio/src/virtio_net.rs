@@ -20,7 +20,7 @@ unsafe impl<T: Transport> Send for VirtIONet<T> {}
 
 impl<T: Transport + 'static> Driver for VirtIONet<T> {
     fn get_id(&self) -> &str {
-        "virtio-blk"
+        "virtio-net"
     }
 
     fn get_device_wrapper(self: Arc<Self>) -> DeviceType {
@@ -51,10 +51,12 @@ impl<T: Transport + 'static> NetDriver for VirtIONet<T> {
 
 pub fn init<T: Transport + 'static>(transport: T, irqs: Vec<u32>) -> Arc<dyn Driver> {
     info!("Initailize virtio-net device, irqs: {:?}", irqs);
+    info!("Transport device type: {:?}", transport.device_type());
+    info!("Transport status: {:?}", transport.get_status());
     let net_device = Arc::new(VirtIONet {
         inner: Mutex::new(
             net::VirtIONet::<HalImpl, T, 32>::new(transport, 2048)
-                .expect("failed to create blk driver"),
+                .expect("failed to create net driver"),
         ),
         irqs,
     });
