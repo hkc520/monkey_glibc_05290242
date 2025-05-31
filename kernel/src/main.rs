@@ -327,8 +327,8 @@ fn main(hart_id: usize) {
         }
         Err(e) => println!("读取musl/ltp目录失败: {:?}", e),
     }*/
-    println!("bin目录内容：");
-    let musl_dir = File::open("/bin".into(), OpenFlags::O_DIRECTORY).expect("无法打开bin目录");
+    //println!("bin目录内容：");
+    /*  let musl_dir = File::open("/bin".into(), OpenFlags::O_DIRECTORY).expect("无法打开bin目录");
     match musl_dir.read_dir() {
         Ok(entries) => {
             for entry in entries {
@@ -346,7 +346,7 @@ fn main(hart_id: usize) {
             }
         }
         Err(e) => println!("读取bin目录失败: {:?}", e),
-    }
+    }*/
     // cache task with task templates
     //tasks::exec::cache_task_template("/musl/busybox".into()).expect("can't cache task");
     // tasks::exec::cache_task_template("/runtest.exe".into()).expect("can't cache task");
@@ -360,7 +360,7 @@ fn main(hart_id: usize) {
     // loop { arch::wfi() }
     tasks::init();
     log::info!("run tasks");
-    println!("猴子1000号，你好！");
+    //println!("猴子1000号，你好！");
     //let current_task = current_user_task();
     // Open the /musl directory
     //let musl_dir = File::open("/musl".into(), OpenFlags::O_DIRECTORY).expect("无法打开/musl目录");
