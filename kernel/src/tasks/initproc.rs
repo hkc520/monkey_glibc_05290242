@@ -144,6 +144,7 @@ pub async fn initproc() {
         set_libc_path("/musl/lib/libc.so".to_string());
         println!("start kernel tasks");
         let home_dir = PathBuf::from("/musl/basic");
+        command("/musl/busybox sh", home_dir.clone()).await;
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
             home_dir.clone(),
@@ -170,7 +171,7 @@ pub async fn initproc() {
         //command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
         // command("/musl/busybox sh run-dynamic.sh", home_dir.clone()).await;
         // command("/musl/busybox sh run-static.sh", home_dir.clone()).await;
-        command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh cyclictest_testcode.sh", home_dir.clone()).await;
 
         // command("/musl/busybox sh unixbench_testcode.sh", home_dir.clone()).await;
         //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
@@ -179,6 +180,7 @@ pub async fn initproc() {
         // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
         set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
         let glibc_home_dir = PathBuf::from("/glibc/basic");
+        command("/musl/busybox sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
             glibc_home_dir.clone(),
@@ -361,11 +363,11 @@ pub async fn initproc() {
         )
         .await;
 
-        command(
-            "/glibc/busybox sh cyclictest_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
+        // command(
+        //     "/glibc/busybox sh cyclictest_testcode.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
     }
 
     #[cfg(target_arch = "loongarch64")]
@@ -608,11 +610,11 @@ pub async fn initproc() {
         )
         .await;
 
-        command(
-            "/glibc/busybox sh cyclictest_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
+        // command(
+        //     "/glibc/busybox sh cyclictest_testcode.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
     }
     println!("!TEST FINISH!");
     shutdown();
