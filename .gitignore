@@ -17,3 +17,7 @@ loongarch64-unknown-linux-musl
 cross-tools
 scripts
 loongarch64-linux-musl-cross
+gcc-13.2.0-loongarch64-linux-gnu.tgz
+qemu-9.2.1.tar.xz
+libslirp
+Dockerfile
