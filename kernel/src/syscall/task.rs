@@ -298,7 +298,7 @@ impl UserTaskContainer {
             .parent
             .read()
             .upgrade()
-            .map(|x| x.task_id)
+            .map(|x| x.process_id)
             .ok_or(Errno::EPERM)
     }
 
