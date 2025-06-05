@@ -46,3 +46,28 @@ pub struct IoVec {
     pub base: usize,
     pub len: usize,
 }
+
+// 为glibc测试定义的kstat结构体 - 符合LoongArch LP64数据模型
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct KStat {
+    pub st_dev: u64,         // dev_t
+    pub st_ino: u64,         // ino_t
+    pub st_mode: u32,        // mode_t
+    pub st_nlink: u32,       // nlink_t
+    pub st_uid: u32,         // uid_t
+    pub st_gid: u32,         // gid_t
+    pub st_rdev: u64,        // dev_t
+    pub __pad: u64,          // unsigned long (64-bit on LoongArch)
+    pub st_size: u64,        // off_t (64-bit)
+    pub st_blksize: u32,     // blksize_t
+    pub __pad2: u32,         // int
+    pub st_blocks: u64,      // blkcnt_t (64-bit)
+    pub st_atime_sec: i64,   // long (64-bit on LoongArch)
+    pub st_atime_nsec: i64,  // long (64-bit on LoongArch)
+    pub st_mtime_sec: i64,   // long
+    pub st_mtime_nsec: i64,  // long
+    pub st_ctime_sec: i64,   // long
+    pub st_ctime_nsec: i64,  // long
+    pub __unused: [u32; 2],  // unsigned __unused[2]
+}

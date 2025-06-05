@@ -1,14 +1,14 @@
 use super::types::fd::IoVec;
 use super::types::poll::{EpollEvent, EpollFile};
 use super::SysResult;
-use crate::syscall::types::fd::FcntlCmd;
-use crate::syscall::types::fd::AT_CWD;
+use crate::syscall::types::fd::{FcntlCmd, KStat, AT_CWD}; // 修复：统一导入
 use crate::user::UserTaskContainer;
 use crate::utils::time::{current_nsec, current_timespec};
 use crate::utils::useref::UserRef;
 use alloc::sync::Arc;
+use alloc::{string::String, vec, vec::Vec}; // 修复：移除重复的Arc导入
 use bit_field::BitArray;
-use core::cmp;
+use core::cmp::{self, min};
 use executor::yield_now;
 use fs::dentry::umount;
 use fs::file::File;
@@ -227,13 +227,42 @@ impl UserTaskContainer {
         Ok(0)
     }
 
-    pub async fn sys_fstat(&self, fd: usize, stat_ptr: UserRef<Stat>) -> SysResult {
-        debug!("sys_fstat @ fd: {} stat_ptr: {}", fd, stat_ptr);
-        let stat_ref = stat_ptr.get_mut();
-
-        let file = self.task.get_fd(fd).ok_or(Errno::EBADF)?;
-        file.stat(stat_ref)?;
-        stat_ref.mode |= StatMode::OWNER_MASK;
+    pub async fn sys_fstat(&self, fd: usize, kst: usize) -> SysResult {
+        debug!("[task {}] sys_fstat @ fd: {}", self.tid, fd);
+        
+        // 获取文件对象
+        let file = self.task.get_fd(fd).ok_or_else(|| Errno::EBADF)?;
+        
+        // 先获取原始的Stat结构体
+        let mut stat = Stat::default();
+        file.stat(&mut stat)?;
+        
+        // 转换为KStat结构体
+        let kstat = KStat {
+            st_dev: stat.dev,
+            st_ino: stat.ino,
+            st_mode: stat.mode.bits(),
+            st_nlink: stat.nlink,
+            st_uid: stat.uid,
+            st_gid: stat.gid,
+            st_rdev: stat.rdev,
+            __pad: stat.__pad,
+            st_size: stat.size,
+            st_blksize: stat.blksize,
+            __pad2: stat.__pad2,
+            st_blocks: stat.blocks,
+            st_atime_sec: stat.atime.sec as i64,
+            st_atime_nsec: stat.atime.nsec as i64,
+            st_mtime_sec: stat.mtime.sec as i64,
+            st_mtime_nsec: stat.mtime.nsec as i64,
+            st_ctime_sec: stat.ctime.sec as i64,
+            st_ctime_nsec: stat.ctime.nsec as i64,
+            __unused: [0u32; 2],
+        };
+        
+        // 将KStat写入用户空间
+        let kst_ref = UserRef::<KStat>::from(kst);
+        *kst_ref.get_mut() = kstat;
         Ok(0)
     }
 
