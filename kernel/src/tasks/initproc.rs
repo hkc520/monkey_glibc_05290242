@@ -375,6 +375,7 @@ pub async fn initproc() {
         set_libc_path("/musl/lib/libc.so".to_string());
         println!("start kernel tasks");
         let home_dir = PathBuf::from("/musl/basic");
+        command("/musl/busybox sh", home_dir.clone()).await;
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
             home_dir.clone(),
@@ -561,6 +562,7 @@ pub async fn initproc() {
         // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
         set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
         let glibc_home_dir = PathBuf::from("/glibc/basic");
+        command("/glibc/busybox sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
             glibc_home_dir.clone(),

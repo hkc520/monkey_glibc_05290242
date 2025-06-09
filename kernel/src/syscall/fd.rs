@@ -2,7 +2,7 @@ use fs::pathbuf::PathBuf;
 use super::types::fd::IoVec;
 use super::types::poll::{EpollEvent, EpollFile};
 use super::SysResult;
-use crate::syscall::types::fd::{FcntlCmd, KStat, AT_CWD}; // 修复：统一导入
+use crate::syscall::types::fd::{FcntlCmd, KStat, AT_CWD, Statx, StatxTimestamp, STATX_ALL}; // 修复：统一导入并添加statx相关类型
 use crate::user::UserTaskContainer;
 use crate::utils::time::{current_nsec, current_timespec};
 use crate::utils::useref::UserRef;
@@ -1054,6 +1054,90 @@ impl UserTaskContainer {
         let file = self.task.fd_resolve(newdir_fd, linkpath)?;
         let dir = File::open(file.dir(), OpenFlags::O_DIRECTORY)?;
         dir.symlink(&file.filename(), target)?;
+        Ok(0)
+    }
+
+    pub async fn sys_statx(
+        &self,
+        dir_fd: isize,
+        pathname: UserRef<i8>,
+        flags: u32,
+        mask: u32,
+        statxbuf: UserRef<Statx>,
+    ) -> SysResult {
+        debug!(
+            "[task {}] sys_statx @ dir_fd: {}, pathname: {}, flags: {:#x}, mask: {:#x}",
+            self.tid, dir_fd, pathname, flags, mask
+        );
+
+        // 获取路径字符串
+        let path = if pathname.is_valid() {
+            pathname.get_cstr().map_err(|_| Errno::EINVAL)?
+        } else {
+            ""
+        };
+
+        debug!("sys_statx @ path: {}", path);
+
+        // 获取文件对象
+        let file = if path.is_empty() && dir_fd >= 0 {
+            // 如果路径为空且 dir_fd 有效，则获取 dir_fd 对应的文件
+            self.task.get_fd(dir_fd as usize).ok_or(Errno::EBADF)?
+        } else {
+            // 否则通过路径打开文件，需要包装成Arc
+            Arc::new(self.task.fd_open(dir_fd, path, OpenFlags::O_RDONLY)?)
+        };
+
+        // 获取传统的 Stat 结构体
+        let mut stat = Stat::default();
+        file.stat(&mut stat)?;
+
+        // 转换为 Statx 结构体
+        let statx = Statx {
+            stx_mask: mask & STATX_ALL, // 返回请求的有效字段
+            stx_blksize: stat.blksize,
+            stx_attributes: 0, // 暂时不支持扩展属性
+            stx_nlink: stat.nlink,
+            stx_uid: stat.uid,
+            stx_gid: stat.gid,
+            stx_mode: stat.mode.bits() as u16,
+            __spare0: [0],
+            stx_ino: stat.ino,
+            stx_size: stat.size,
+            stx_blocks: stat.blocks,
+            stx_attributes_mask: 0, // 暂时不支持扩展属性
+            stx_atime: StatxTimestamp {
+                tv_sec: stat.atime.sec as i64,
+                tv_nsec: stat.atime.nsec as u32,
+                __reserved: 0,
+            },
+            stx_btime: StatxTimestamp {
+                tv_sec: stat.ctime.sec as i64, // 使用 ctime 作为 btime 的近似值
+                tv_nsec: stat.ctime.nsec as u32,
+                __reserved: 0,
+            },
+            stx_ctime: StatxTimestamp {
+                tv_sec: stat.ctime.sec as i64,
+                tv_nsec: stat.ctime.nsec as u32,
+                __reserved: 0,
+            },
+            stx_mtime: StatxTimestamp {
+                tv_sec: stat.mtime.sec as i64,
+                tv_nsec: stat.mtime.nsec as u32,
+                __reserved: 0,
+            },
+            stx_rdev_major: ((stat.rdev >> 8) & 0xfff) as u32 | ((stat.rdev >> 32) & !0xfff) as u32,
+            stx_rdev_minor: (stat.rdev & 0xff) as u32 | ((stat.rdev >> 12) & !0xff) as u32,
+            stx_dev_major: ((stat.dev >> 8) & 0xfff) as u32 | ((stat.dev >> 32) & !0xfff) as u32,
+            stx_dev_minor: (stat.dev & 0xff) as u32 | ((stat.dev >> 12) & !0xff) as u32,
+            __spare2: [0; 14],
+        };
+
+        // 将 Statx 写入用户空间
+        let statx_ref = statxbuf.get_mut();
+        *statx_ref = statx;
+
+        debug!("sys_statx completed successfully");
         Ok(0)
     }
 }

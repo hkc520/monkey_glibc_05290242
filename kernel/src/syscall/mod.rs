@@ -140,6 +140,16 @@ impl UserTaskContainer {
                 self.sys_fstatat(args[0] as _, args[1].into(), args[2].into())
                     .await
             }
+            Sysno::statx => {
+                self.sys_statx(
+                    args[0] as _,
+                    args[1].into(),
+                    args[2] as _,
+                    args[3] as _,
+                    args[4].into(),
+                )
+                .await
+            }
             Sysno::geteuid => self.sys_geteuid().await,
             Sysno::getegid => self.sys_getegid().await,
             Sysno::getgid => self.sys_getgid().await,
