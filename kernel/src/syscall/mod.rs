@@ -484,6 +484,10 @@ impl UserTaskContainer {
             Sysno::dup2 => self.sys_dup2(args[0], args[1]).await,
             #[cfg(target_arch = "x86_64")]
             Sysno::sync | Sysno::access => Ok(0),
+            Sysno::membarrier => {
+                self.sys_membarrier(args[0] as _, args[1] as _, args[2] as _)
+                    .await
+            }
             _ => {
                 warn!("unsupported syscall: {}", call_id);
                 Err(Errno::EPERM)

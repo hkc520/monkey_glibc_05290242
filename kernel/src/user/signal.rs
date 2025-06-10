@@ -93,6 +93,12 @@ impl UserTaskContainer {
             return;
         }
 
+        // 对于SIGSYNCCALL信号也要小心处理，因为它与多线程TLS相关
+        if signal == SignalFlags::SIGSYNCCALL {
+            warn!("Processing SIGSYNCCALL signal for task {}, handler: {:#x}", 
+                  self.task.get_task_id(), sigaction.handler);
+        }
+
         info!(
             "handle signal: {:?} task: {}",
             signal,
@@ -164,8 +170,19 @@ impl UserTaskContainer {
         // restore sigmask to the mask before doing the signal.
         self.task.tcb.write().sigmask = task_mask;
         *cx_ref = store_cx;
-        // copy pc from new_pc
-        cx_ref[TrapFrameArgs::SEPC] = cx.pc();
-        cx.restore_ctx(cx_ref);
+        
+        // 添加安全检查，防止无效的PC值
+        let new_pc = cx.pc();
+        if new_pc < 0x10000 || new_pc >= 0x800000000000 {
+            warn!("Invalid signal return PC: {:#x}, using stored PC instead", new_pc);
+            // 使用存储的上下文中的PC，不从信号上下文恢复
+        } else {
+            // copy pc from new_pc
+            cx_ref[TrapFrameArgs::SEPC] = new_pc;
+            cx.restore_ctx(cx_ref);
+        }
+        
+        info!("Signal handling completed for task {}, returning to PC: {:#x}", 
+              self.task.get_task_id(), cx_ref[TrapFrameArgs::SEPC]);
     }
 }
