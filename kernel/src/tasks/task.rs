@@ -333,10 +333,10 @@ impl UserTask {
         {
             let parent_pcb = self.pcb.lock();
             warn!("COW_FORK: Parent task_id={}, memset size={}", self.task_id, parent_pcb.memset.len());
-            for (i, area) in parent_pcb.memset.iter().enumerate() {
-                warn!("COW_FORK: Parent Area {}: start={:#x}, len={:#x}, mtype={:?}, has_file={}, mtrackers={}",
-                    i, area.start, area.len, area.mtype, area.file.is_some(), area.mtrackers.len());
-            }
+            // for (i, area) in parent_pcb.memset.iter().enumerate() {
+            //     warn!("COW_FORK: Parent Area {}: start={:#x}, len={:#x}, mtype={:?}, has_file={}, mtrackers={}",
+            //         i, area.start, area.len, area.mtype, area.file.is_some(), area.mtrackers.len());
+            // }
             drop(parent_pcb);
         }
         
@@ -359,10 +359,10 @@ impl UserTask {
         
         // 添加调试信息：检查复制的数据
         warn!("COW_FORK: Copied memset size={}", memset_for_new_pcb.len());
-        for (i, area) in memset_for_new_pcb.iter().enumerate() {
-            warn!("COW_FORK: Copied Area {}: start={:#x}, len={:#x}, mtype={:?}, has_file={}, mtrackers={}",
-                i, area.start, area.len, area.mtype, area.file.is_some(), area.mtrackers.len());
-        }
+        // for (i, area) in memset_for_new_pcb.iter().enumerate() {
+        //     warn!("COW_FORK: Copied Area {}: start={:#x}, len={:#x}, mtype={:?}, has_file={}, mtrackers={}",
+        //         i, area.start, area.len, area.mtype, area.file.is_some(), area.mtrackers.len());
+        // }
         
         // 复制到子进程
         {
@@ -646,7 +646,7 @@ impl AsyncTask for UserTask {
         };
 
         if should_cleanup_process {
-            warn!("Cleaning up process resources for process_id={}", self.process_id);
+            //warn!("Cleaning up process resources for process_id={}", self.process_id);
             let mut pcb = self.pcb.lock();
             pcb.memset.clear();
             pcb.fd_table.clear();

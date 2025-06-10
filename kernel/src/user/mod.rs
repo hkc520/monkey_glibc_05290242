@@ -71,7 +71,7 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
         let finded = area.mtrackers.iter_mut().find(|x| x.vaddr == vaddr.floor());
         let ppn = match finded {
             Some(map_track) => {
-                warn!("Found existing MapTrack for vaddr: {:#x}", vaddr.raw());
+                //warn!("Found existing MapTrack for vaddr: {:#x}", vaddr.raw());
                 if area.mtype == MemType::Shared {
                     task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
                     return;
@@ -157,12 +157,12 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
 
         drop(pcb);
 
-        warn!(
-            "Mapping ppn {:#x} to vaddr {:#x} with flags {:?}",
-            ppn.raw(),
-            vaddr.floor().raw(),
-            flags
-        );
+        // warn!(
+        //     "Mapping ppn {:#x} to vaddr {:#x} with flags {:?}",
+        //     ppn.raw(),
+        //     vaddr.floor().raw(),
+        //     flags
+        // );
         task.map(ppn, vaddr.floor(), flags);
 
         // 验证映射是否成功

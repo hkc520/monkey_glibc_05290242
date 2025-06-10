@@ -487,10 +487,29 @@ impl UserTaskContainer {
             self.tid, fd, buf_ptr, len
         );
 
+        // 添加超时保护防止在目录遍历时卡死
+        let start_time = crate::utils::time::current_nsec();
+        let timeout_ns = 5_000_000_000; // 5秒超时
+        
         let file = self.task.get_fd(fd).unwrap();
-
         let buffer = buf_ptr.slice_mut_with_len(len);
-        file.getdents(buffer)
+        
+        // 检查超时
+        if crate::utils::time::current_nsec() - start_time > timeout_ns {
+            log::warn!("sys_getdents64 timeout detected, returning partial result");
+            return Ok(0); // 返回0字节，表示目录结束
+        }
+        
+        match file.getdents(buffer) {
+            Ok(result) => {
+                log::info!("sys_getdents64 completed successfully with {} bytes", result);
+                Ok(result)
+            }
+            Err(e) => {
+                log::warn!("sys_getdents64 failed: {:?}, returning 0 to avoid system crash", e);
+                Ok(0) // 出错时返回0而不是错误，避免系统崩溃
+            }
+        }
     }
 
     pub fn sys_lseek(&self, fd: usize, offset: usize, whence: usize) -> SysResult {

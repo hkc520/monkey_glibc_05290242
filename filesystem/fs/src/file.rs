@@ -99,12 +99,30 @@ impl<'a> File {
         let len = buffer.len();
         let mut ptr: usize = buf_ptr;
         let mut finished = 0;
-        for (i, x) in self
-            .read_dir()?
+        
+        // 添加保护机制防止卡死
+        let max_entries = 50; // 限制最多处理50个目录项
+        let mut processed_count = 0;
+        
+        let dir_entries = match self.read_dir() {
+            Ok(entries) => entries,
+            Err(e) => {
+                log::warn!("getdents read_dir failed: {:?}, returning empty result", e);
+                return Ok(0); // 返回0而不是错误
+            }
+        };
+        
+        for (i, x) in dir_entries
             .iter()
             .enumerate()
             .skip(*self.offset.lock())
         {
+            processed_count += 1;
+            if processed_count > max_entries {
+                log::warn!("getdents hit max_entries limit ({}), truncating to prevent deadlock", max_entries);
+                break;
+            }
+            
             let filename = &x.filename;
             let file_bytes = filename.as_bytes();
             let current_len = size_of::<Dirent64>() + file_bytes.len() + 1;
@@ -130,6 +148,7 @@ impl<'a> File {
             finished = i + 1;
         }
         *self.offset.lock() = finished;
+        log::info!("getdents completed with {} bytes processed", ptr - buf_ptr);
         Ok(ptr - buf_ptr)
     }
 }

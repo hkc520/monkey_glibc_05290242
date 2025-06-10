@@ -50,7 +50,7 @@ bitflags! {
 
 impl Into<MappingFlags> for MmapProt {
     fn into(self) -> MappingFlags {
-        let mut res = MappingFlags::empty();
+        let mut res = MappingFlags::U;
         if self.contains(Self::PROT_READ) {
             res |= MappingFlags::R;
         }
