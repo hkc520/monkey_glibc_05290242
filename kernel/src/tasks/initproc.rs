@@ -32,6 +32,7 @@ use super::UserTask;
 /*Add：全局配置libc.so的路径 */
 static LIBC_PATH: Mutex<String> = Mutex::new(String::new());
 static GLIBC_PATH: Mutex<String> = Mutex::new(String::new());
+static DYN_PATH: Mutex<String> = Mutex::new(String::new());
 
 pub fn set_libc_path(path: String) {
     *LIBC_PATH.lock() = path;
@@ -48,6 +49,15 @@ pub fn set_glibc_path(path: String) {
 pub fn get_glibc_path() -> String {
     GLIBC_PATH.lock().clone()
 }
+
+pub fn set_dyn_path(path: String) {
+    *DYN_PATH.lock() = path;
+}
+
+pub fn get_dyn_path() -> String {    
+    DYN_PATH.lock().clone()
+}
+
 fn clear() {
     DebugConsole::putchar(0x1b);
     DebugConsole::putchar(0x5b);
@@ -141,7 +151,20 @@ async fn command(cmd: &str, work_dir: PathBuf) {
 pub async fn initproc() {
     #[cfg(not(target_arch = "loongarch64"))]
     {
-        set_libc_path("/musl/lib/libc.so".to_string());
+        set_libc_path("/glibc/lib".to_string());
+        //set_dyn_path("/musl/lib/libc.so".to_string());
+        set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+        let glibc_home_dir = PathBuf::from("/glibc/basic");
+        command("/musl/busybox sh", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox sh /glibc/basic/run-all.sh",
+            glibc_home_dir.clone(),
+        );
         println!("start kernel tasks");
         let home_dir = PathBuf::from("/musl/basic");
         command("/musl/busybox sh", home_dir.clone()).await;

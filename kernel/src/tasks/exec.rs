@@ -1,7 +1,7 @@
 use crate::IRQ;
 use xmas_elf::ElfFile;
 use super::UserTask;  
-use crate::tasks::initproc::{get_libc_path, get_glibc_path}; // 添加get_glibc_path导入  
+use crate::tasks::initproc::{get_libc_path, get_glibc_path,get_dyn_path}; // 添加get_glibc_path导入   
 use crate::{  
     consts::USER_DYN_ADDR,  
     tasks::{  
@@ -310,11 +310,17 @@ pub async fn exec_with_process(
                 let libc_path = match detect_libc_type(&elf) {  
                     LibcType::Musl => get_libc_path(),  
                     LibcType::Glibc => get_glibc_path(),  
-                    LibcType::Unknown => get_libc_path(), // 默认使用musl  
+                    LibcType::Unknown => get_dyn_path(), // 默认使用musl 
                 };  
                   
-                let mut new_args = vec![libc_path];  
-                new_args.extend(args);  
+                let mut new_args = vec![libc_path];
+                // 第二个参数应该是要执行的程序的绝对路径
+                new_args.push(path.path().to_string());
+                // 然后添加原始的程序参数（跳过第一个参数，因为那是程序名）
+                if args.len() > 1 {
+                    new_args.extend(args[1..].iter().cloned());
+                }
+                warn!("EXEC: Dynamic linker args: {:?}", new_args);
                 return exec_with_process(task, curr_dir, new_args[0].clone(), new_args, envp)  
                     .await;  
             }  
