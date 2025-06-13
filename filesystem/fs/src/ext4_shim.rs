@@ -491,14 +491,33 @@ impl INodeInterface for Ext4FileWrapper {
 
     fn stat(&self, stat: &mut vfscore::Stat) -> VfsResult<()> {
         let mut file = self.inner.lock();
-        // TODO: 读取其他文件的信息
+
         if self.file_type == FileType::File {
             let path = file.get_path();
             let path = path.to_str().unwrap();
             file.file_open(path, O_RDONLY).map_err(map_ext4_err)?;
+
+            // 获取真实的inode号
+            let path_cstr = CString::new(path).unwrap();
+            let mut inode_num: u32 = 0;
+            let mut inode = core::mem::MaybeUninit::uninit();
+
+            unsafe {
+                if lwext4_rust::bindings::ext4_raw_inode_fill(
+                    path_cstr.as_ptr(),
+                    &mut inode_num,
+                    inode.as_mut_ptr(),
+                ) == 0
+                {
+                    stat.ino = inode_num as u64;
+                } else {
+                    stat.ino = 1; // fallback
+                }
+            }
+        } else {
+            stat.ino = 1; // 对于非文件类型，使用默认值
         }
 
-        stat.ino = 1; // TODO: 获取真正的 INode
         stat.mode = match file.get_type() {
             InodeTypes::EXT4_DE_REG_FILE => StatMode::FILE,
             InodeTypes::EXT4_DE_DIR => StatMode::DIR,

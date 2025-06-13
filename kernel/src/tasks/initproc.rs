@@ -157,12 +157,12 @@ pub async fn initproc() {
         let home_dir = PathBuf::from("/musl/basic");
         command("/musl/busybox sh", home_dir.clone()).await;
         command(
-            "/musl/busybox mv /glibc/lib/libm.so /glibc/lib/libm.so.6\n\n",
+            "/musl/busybox cp /glibc/lib/libm.so /glibc/lib/libm.so.6",
             home_dir.clone(),
         )
         .await;
         command(
-            "/musl/busybox mv /glibc/lib/libc.so /glibc/lib/libc.so.6\n\n",
+            "/musl/busybox cp /glibc/lib/libc.so /glibc/lib/libc.so.6",
             home_dir.clone(),
         )
         .await;
@@ -178,6 +178,7 @@ pub async fn initproc() {
         )
         .await;
         let home_dir = PathBuf::from("/musl");
+        command("/musl/busybox sh /musl/libcbench_testcode.sh", home_dir.clone()).await;
         command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
 
         command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
@@ -220,6 +221,7 @@ pub async fn initproc() {
         .await;
 
         let glibc_home_dir = PathBuf::from("/glibc");
+        command("/glibc/busybox sh /glibc/libcbench_testcode.sh", glibc_home_dir.clone()).await;    
         command(
             "/glibc/busybox sh busybox_testcode.sh",
             glibc_home_dir.clone(),
@@ -375,6 +377,18 @@ pub async fn initproc() {
                 "/glibc/runtest.exe",
                 "entry-dynamic.exe",
                 "pthread_rwlock_ebusy",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "search_lsearch",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "sem_init",
                 glibc_home_dir.clone(),
             ),
         ];
