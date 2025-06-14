@@ -205,14 +205,14 @@ impl INodeInterface for Ext4FileWrapper {
         // 添加重试机制防止校验和失败时卡死
         let max_retries = 3;
         let mut retry_count = 0;
-        
+
         loop {
             retry_count += 1;
-            
+
             let mut file = self.inner.lock();
             let path = file.get_path();
             let path = path.to_str().unwrap();
-            
+
             // 使用match模式处理可能的错误
             match file.file_open(path, O_RDONLY) {
                 Ok(_) => {
@@ -226,10 +226,17 @@ impl INodeInterface for Ext4FileWrapper {
                                 Err(e) => {
                                     let _ = file.file_close();
                                     if retry_count >= max_retries {
-                                        log::warn!("readat file_read failed after {} retries, error: {}", max_retries, e);
+                                        log::warn!(
+                                            "readat file_read failed after {} retries, error: {}",
+                                            max_retries,
+                                            e
+                                        );
                                         return Ok(0); // 返回0字节而不是错误，避免系统崩溃
                                     }
-                                    log::warn!("readat file_read failed on attempt {}, retrying...", retry_count);
+                                    log::warn!(
+                                        "readat file_read failed on attempt {}, retrying...",
+                                        retry_count
+                                    );
                                     continue;
                                 }
                             }
@@ -237,20 +244,34 @@ impl INodeInterface for Ext4FileWrapper {
                         Err(e) => {
                             let _ = file.file_close();
                             if retry_count >= max_retries {
-                                log::warn!("readat file_seek failed after {} retries, error: {}", max_retries, e);
+                                log::warn!(
+                                    "readat file_seek failed after {} retries, error: {}",
+                                    max_retries,
+                                    e
+                                );
                                 return Ok(0);
                             }
-                            log::warn!("readat file_seek failed on attempt {}, retrying...", retry_count);
+                            log::warn!(
+                                "readat file_seek failed on attempt {}, retrying...",
+                                retry_count
+                            );
                             continue;
                         }
                     }
                 }
                 Err(e) => {
                     if retry_count >= max_retries {
-                        log::warn!("readat file_open failed after {} retries, error: {}", max_retries, e);
+                        log::warn!(
+                            "readat file_open failed after {} retries, error: {}",
+                            max_retries,
+                            e
+                        );
                         return Ok(0);
                     }
-                    log::warn!("readat file_open failed on attempt {}, retrying...", retry_count);
+                    log::warn!(
+                        "readat file_open failed on attempt {}, retrying...",
+                        retry_count
+                    );
                     continue;
                 }
             }
@@ -320,93 +341,24 @@ impl INodeInterface for Ext4FileWrapper {
     }
 
     fn read_dir(&self) -> VfsResult<Vec<DirEntry>> {
-        #[cfg(target_arch = "loongarch64")]
-        {
-            // 激进但安全的方法：在LoongArch64下完全跳过lwext4_dir_entries，直接返回基本目录项
-            // 这是为了避免在EXT4校验和失败时卡死，确保系统稳定运行
-            log::warn!("Using emergency-only directory listing on LoongArch64 to prevent lwext4 checksum deadlock");
-            
-            let mut ans = Vec::new();
-            
-            // 只返回基本的 . 和 .. 目录项
+        let iters = self
+            .inner
+            .lock()
+            .lwext4_dir_entries()
+            .map_err(map_ext4_err)?;
+        let mut ans = Vec::new();
+        for (name, file_type) in zip(iters.0, iters.1) {
             ans.push(DirEntry {
-                filename: ".".to_string(),
+                filename: CString::from_vec_with_nul(name)
+                    .map_err(|_| Errno::EINVAL)?
+                    .to_str()
+                    .map_err(|_| Errno::EINVAL)?
+                    .to_string(),
                 len: 0,
-                file_type: FileType::Directory,
-            });
-            
-            ans.push(DirEntry {
-                filename: "..".to_string(),
-                len: 0,
-                file_type: FileType::Directory,
-            });
-            
-            log::info!("read_dir returning {} entries (LoongArch64 emergency-only mode)", ans.len());
-            Ok(ans)
+                file_type: map_ext4_type(file_type),
+            })
         }
-        
-        #[cfg(not(target_arch = "loongarch64"))]
-        {
-            // 在其他架构下使用正常的实现，包含保护机制
-            let max_entries = 50; // 限制最多读取50个目录项
-            let mut entry_count = 0;
-            
-            // 使用异常处理包装lwext4_dir_entries调用
-            let iters = match self.inner.lock().lwext4_dir_entries() {
-                Ok(iters) => iters,
-                Err(e) => {
-                    log::warn!("lwext4_dir_entries failed: {}, returning minimal directory listing", e);
-                    // 当lwext4_dir_entries失败时，返回基本的目录结构
-                    return Ok(vec![
-                        DirEntry {
-                            filename: ".".to_string(),
-                            len: 0,
-                            file_type: FileType::Directory,
-                        },
-                        DirEntry {
-                            filename: "..".to_string(),
-                            len: 0,
-                            file_type: FileType::Directory,
-                        },
-                    ]);
-                }
-            };
-            
-            let mut ans = Vec::new();
-            for (name, file_type) in zip(iters.0, iters.1) {
-                entry_count += 1;
-                if entry_count > max_entries {
-                    log::warn!("read_dir hit max_entries limit ({}), truncating to prevent potential deadlock", max_entries);
-                    break;
-                }
-                
-                // 添加更好的错误处理
-                match CString::from_vec_with_nul(name) {
-                    Ok(cstring) => {
-                        match cstring.to_str() {
-                            Ok(filename) => {
-                                ans.push(DirEntry {
-                                    filename: filename.to_string(),
-                                    len: 0,
-                                    file_type: map_ext4_type(file_type),
-                                });
-                            }
-                            Err(_) => {
-                                log::warn!("Invalid UTF-8 in filename, skipping directory entry");
-                                continue;
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        log::warn!("Invalid CString in directory entry, skipping");
-                        continue;
-                    }
-                }
-            }
-            
-            log::info!("read_dir completed with {} entries", ans.len());
-            Ok(ans)
-        }
+        Ok(ans)
     }
 
     fn lookup(&self, name: &str) -> VfsResult<Arc<dyn INodeInterface>> {

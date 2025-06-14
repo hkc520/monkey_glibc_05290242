@@ -155,7 +155,7 @@ pub async fn initproc() {
         set_dyn_path("/musl/lib/libc.so".to_string());
         //set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
         let home_dir = PathBuf::from("/musl/basic");
-        command("/musl/busybox sh", home_dir.clone()).await;
+        //command("/musl/busybox sh", home_dir.clone()).await;
         command(
             "/musl/busybox cp /glibc/lib/libm.so /glibc/lib/libm.so.6",
             home_dir.clone(),
@@ -178,7 +178,11 @@ pub async fn initproc() {
         )
         .await;
         let home_dir = PathBuf::from("/musl");
-        command("/musl/busybox sh /musl/libcbench_testcode.sh", home_dir.clone()).await;
+        command(
+            "/musl/busybox sh /musl/libcbench_testcode.sh",
+            home_dir.clone(),
+        )
+        .await;
         command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
 
         command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
@@ -203,14 +207,15 @@ pub async fn initproc() {
         set_libc_path("/glibc/lib".to_string());
         set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
         let glibc_home_dir = PathBuf::from("/glibc/basic");
-        command("/musl/busybox sh", glibc_home_dir.clone()).await;
+        //command("/musl/busybox sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
             glibc_home_dir.clone(),
         )
         .await;
         command(
-            "/glibc/busybox sh /glibc/basic/run-all.sh",
+            "/glibc/busybox sh /glib
+            c/basic/run-all.sh",
             glibc_home_dir.clone(),
         )
         .await;
@@ -221,7 +226,11 @@ pub async fn initproc() {
         .await;
 
         let glibc_home_dir = PathBuf::from("/glibc");
-        command("/glibc/busybox sh /glibc/libcbench_testcode.sh", glibc_home_dir.clone()).await;    
+        command(
+            "/glibc/busybox sh /glibc/libcbench_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
         command(
             "/glibc/busybox sh busybox_testcode.sh",
             glibc_home_dir.clone(),
@@ -409,9 +418,10 @@ pub async fn initproc() {
     #[cfg(target_arch = "loongarch64")]
     {
         set_libc_path("/musl/lib/libc.so".to_string());
+        set_dyn_path("/musl/lib/libc.so".to_string());
         println!("start kernel tasks");
         let home_dir = PathBuf::from("/musl/basic");
-        command("/musl/busybox sh", home_dir.clone()).await;
+        //command("/musl/busybox sh", home_dir.clone()).await;
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
             home_dir.clone(),
@@ -424,6 +434,7 @@ pub async fn initproc() {
         )
         .await;
         let home_dir = PathBuf::from("/musl");
+        command("/musl/busybox sh libcbench_testcode.sh", home_dir.clone()).await;
         command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
         command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
         //command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
@@ -596,9 +607,10 @@ pub async fn initproc() {
         // command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         // command("/musl/busybox sh multi.sh", home_dir.clone()).await;
         // command("/musl/busybox sh iozone_testcode.sh", home_dir.clone()).await;
-        set_glibc_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+        set_libc_path("/glibc/lib".to_string());
+        set_dyn_path("/glibc/lib/ld-linux-loongarch-lp64d.so.1".to_string());
         let glibc_home_dir = PathBuf::from("/glibc/basic");
-        command("/glibc/busybox sh", glibc_home_dir.clone()).await;
+        //command("/glibc/busybox sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
             glibc_home_dir.clone(),
@@ -616,6 +628,11 @@ pub async fn initproc() {
         .await;
 
         let glibc_home_dir = PathBuf::from("/glibc");
+        command(
+            "/glibc/busybox sh libcbench_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
         command(
             "/glibc/busybox sh busybox_testcode.sh",
             glibc_home_dir.clone(),
@@ -638,6 +655,84 @@ pub async fn initproc() {
                 "/glibc/runtest.exe",
                 "entry-static.exe",
                 "setvbuf_unget",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_robust_detach",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "setvbuf_unget",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel_points",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cond",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_tsd",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cancel_sem_wait",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_cond_smasher",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_condattr_setclock",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_exit_cancel",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_once_deadlock",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "pthread_rwlock_ebusy",
+                glibc_home_dir.clone(),
+            ),
+            (
+                "/glibc/runtest.exe",
+                "entry-dynamic.exe",
+                "tls_get_new_dtv",
                 glibc_home_dir.clone(),
             ),
         ];
