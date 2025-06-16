@@ -25,7 +25,7 @@ build-riscv:
 	@if [ -d dotcargo ]; then mv dotcargo .cargo; fi
 	@BOARD=qemu LOG=$(LOG) RUSTFLAGS="-Clink-arg=-no-pie --cfg=driver=\"kvirtio\" --cfg=board=\"qemu\" --cfg=root_fs=\"ext4\"" \
 	cargo build --target $(RISCV_TARGET) --features "$(RISCV_FEATURES)" --release --offline || exit 1
-	@riscv64-unknown-elf-objcopy -O binary $(RISCV_KERNEL_ELF) $(RISCV_KERNEL_OUT)
+	@rust-objcopy --binary-architecture=riscv64 -O binary  $(RISCV_KERNEL_ELF) $(RISCV_KERNEL_OUT)
 	@if [ -d .cargo ]; then mv .cargo dotcargo; fi
 
 build-loongarch:

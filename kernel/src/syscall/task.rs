@@ -89,6 +89,15 @@ impl UserTaskContainer {
             "sys_execve @ filename: {} args: {:?}: envp: {:?}",
             filename, args, envp
         );
+        
+        // 特别关注sleep命令的参数
+        if filename.contains("sleep") {
+            warn!(
+                "EXECVE_SLEEP: task_id={}, filename={}, args={:?} (arch: {})",
+                self.tid, filename, args,
+                if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" }
+            );
+        }
 
         // clear memory map
         // TODO: solve memory conflict

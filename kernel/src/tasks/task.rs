@@ -50,6 +50,7 @@ pub struct ProcessControlBlock {
     pub timer: [ProcessTimer; 3],
     pub threads: Vec<Weak<UserTask>>,
     pub exit_code: Option<usize>,
+    pub umask: usize,
 }
 
 pub struct ThreadControlBlock {
@@ -108,6 +109,7 @@ impl UserTask {
             timer: [Default::default(); 3],
             exit_code: None,
             threads: Vec::new(),
+            umask: 0o022, // 默认umask值
         };
 
         let tcb = RwLock::new(ThreadControlBlock {
@@ -256,6 +258,10 @@ impl UserTask {
 
     #[inline]
     pub fn thread_exit(&self, exit_code: usize) {
+        warn!("Thread exit: task_id={}, process_id={}, exit_code={}, arch={}", 
+            self.task_id, self.process_id, exit_code,
+            if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
+            
         let mut tcb_writer = self.tcb.write();
         let uaddr = tcb_writer.clear_child_tid;
         if uaddr != 0 {
@@ -399,7 +405,9 @@ impl UserTask {
             }
         });
         
-        warn!("COW_FORK: Completed for child task_id={}", new_task.task_id);
+        warn!("COW_FORK: Completed for child task_id={} (arch: {})", 
+            new_task.task_id, 
+            if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
         new_task
     }
 
@@ -605,6 +613,10 @@ impl AsyncTask for UserTask {
 
     #[inline]
     fn exit(&self, exit_code: usize) {
+        warn!("Process exit: task_id={}, process_id={}, exit_code={}, arch={}", 
+            self.task_id, self.process_id, exit_code, 
+            if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
+        
         let tcb_writer = self.tcb.write();
         let uaddr = tcb_writer.clear_child_tid;
         if uaddr != 0 {

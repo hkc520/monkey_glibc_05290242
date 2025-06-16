@@ -36,6 +36,11 @@ impl UserTaskContainer {
                 self.sys_mkdir_at(args[0] as _, args[1].into(), args[2] as _)
                     .await
             }
+            Sysno::umask => self.sys_umask(args[0]).await,
+            Sysno::fchmodat => {
+                self.sys_fchmodat(args[0] as _, args[1].into(), args[2] as _, args[3] as _)
+                    .await
+            }
             Sysno::read => {
                 self.sys_read(args[0] as _, args[1].into(), args[2] as _)
                     .await

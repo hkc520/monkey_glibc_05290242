@@ -268,11 +268,47 @@ pub async fn exec_with_process(
         Ok(user_task)  
     } else {  
         warn!("EXEC: No cache found, loading ELF from file: {}", path.path());
+        
+        // 特别关注sleep命令的执行
+        if path.path().contains("sleep") {
+            warn!("EXEC_SLEEP: Loading sleep command from {}, args={:?} (arch: {})", 
+                  path.path(), args,
+                  if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
+        }
+        
         drop(caches);  
           
-        let file = File::open(path.clone(), OpenFlags::O_RDONLY)  
-            .map(Arc::new)?  
-            .clone();  
+        let file = match File::open(path.clone(), OpenFlags::O_RDONLY).map(Arc::new) {
+            Ok(file) => file.clone(),
+            Err(e) => {
+                // 如果文件不存在，且路径是简单命令名（如 /sleep），尝试使用busybox
+                if e == Errno::ENOENT {
+                    let path_str = path.path();
+                    if path_str.starts_with("/") && !path_str[1..].contains("/") {
+                        // 这是一个根目录下的简单命令，尝试使用busybox
+                        let command_name = &path_str[1..]; // 去掉开头的 "/"
+                        let busybox_path = if curr_dir.path().starts_with("/musl") {
+                            "/musl/busybox"
+                        } else if curr_dir.path().starts_with("/glibc") {
+                            "/glibc/busybox"
+                        } else {
+                            "/musl/busybox" // 默认使用musl busybox
+                        };
+                        
+                        warn!("EXEC: File {} not found, trying busybox with command {} (arch: {})", 
+                            path_str, command_name, 
+                            if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
+                        let mut new_args = vec![busybox_path.to_string(), command_name.to_string()];
+                        if args.len() > 1 {
+                            new_args.extend(args[1..].iter().cloned());
+                        }
+                        warn!("EXEC: Busybox args: {:?}", new_args);
+                        return exec_with_process(task, curr_dir, busybox_path.to_string(), new_args, envp).await;
+                    }
+                }
+                return Err(e);
+            }
+        };  
         let file_size = file.file_size()?;  
         let frame_ppn = frame_alloc_much(file_size.div_ceil(PAGE_SIZE));  
         let buffer = frame_ppn.as_ref().unwrap()[0].slice_mut_with_len(file_size);  
