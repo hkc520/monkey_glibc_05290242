@@ -451,7 +451,7 @@ pub async fn initproc() {
         command("/musl/busybox cp /musl/busybox /bin/sleep", home_dir.clone()).await;
         command("/musl/busybox chmod +x /sleep", home_dir.clone()).await;
         command("/musl/busybox chmod +x /bin/sleep", home_dir.clone()).await;
-        command("/musl/busybox sh", home_dir.clone()).await;
+        //command("/musl/busybox sh", home_dir.clone()).await;
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
             home_dir.clone(),
