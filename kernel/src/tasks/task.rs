@@ -260,15 +260,14 @@ impl UserTask {
         let uaddr = tcb_writer.clear_child_tid;
         if uaddr != 0 {
             debug!("write addr: {:#x}", uaddr);
-            let addr = self
-                .page_table
-                .translate(VirtAddr::from(uaddr))
-                .expect("can't find a valid addr")
-                .0;
-            unsafe {
-                addr.get_mut_ptr::<u32>().write(0);
+            if let Some((addr, _)) = self.page_table.translate(VirtAddr::from(uaddr)) {
+                unsafe {
+                    addr.get_mut_ptr::<u32>().write(0);
+                }
+                futex_wake(self.pcb.lock().futex_table.clone(), uaddr, 1);
+            } else {
+                warn!("Failed to translate clear_child_tid address in thread_exit: {:#x}", uaddr);
             }
-            futex_wake(self.pcb.lock().futex_table.clone(), uaddr, 1);
         }
         tcb_writer.thread_exit_code = Some(exit_code as u32);
         let exit_signal = tcb_writer.exit_signal;
@@ -610,15 +609,14 @@ impl AsyncTask for UserTask {
         let uaddr = tcb_writer.clear_child_tid;
         if uaddr != 0 {
             debug!("write addr: {:#x}", uaddr);
-            let addr = self
-                .page_table
-                .translate(VirtAddr::from(uaddr))
-                .expect("can't find a valid addr")
-                .0;
-            unsafe {
-                addr.get_mut_ptr::<u32>().write(0);
+            if let Some((addr, _)) = self.page_table.translate(VirtAddr::from(uaddr)) {
+                unsafe {
+                    addr.get_mut_ptr::<u32>().write(0);
+                }
+                futex_wake(self.pcb.lock().futex_table.clone(), uaddr, 1);
+            } else {
+                warn!("Failed to translate clear_child_tid address: {:#x}", uaddr);
             }
-            futex_wake(self.pcb.lock().futex_table.clone(), uaddr, 1);
         }
         
         let exit_signal = tcb_writer.exit_signal;

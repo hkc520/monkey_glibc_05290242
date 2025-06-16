@@ -120,15 +120,20 @@ async fn command(cmd: &str, work_dir: PathBuf) {
             let curr_task = current_task();
             let task = UserTask::new(Weak::new(), work_dir);
             task.before_run();
-            exec_with_process(
+            match exec_with_process(
                 task.clone(),
                 work_dir_clone, // 使用传入的工作目录，而不是空的PathBuf
                 String::from(filename),
                 args_extend.into_iter().map(String::from).collect(),
                 Vec::<&str>::new().into_iter().map(String::from).collect(),
             )
-            .await
-            .expect("can't add task to excutor");
+            .await {
+                Ok(_) => {},
+                Err(e) => {
+                    println!("exec failed for {}: {:?}", filename, e);
+                    return;
+                }
+            }
             curr_task.before_run();
             let task_id = task.get_task_id();
             thread::spawn(task.clone(), user_entry());
@@ -214,8 +219,7 @@ pub async fn initproc() {
         )
         .await;
         command(
-            "/glibc/busybox sh /glib
-            c/basic/run-all.sh",
+            "/glibc/busybox sh /glibc/basic/run-all.sh",
             glibc_home_dir.clone(),
         )
         .await;
