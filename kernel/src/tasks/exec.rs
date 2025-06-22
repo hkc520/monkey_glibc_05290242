@@ -1,409 +1,105 @@
-use crate::IRQ;
-use xmas_elf::ElfFile;
-use super::UserTask;  
-use crate::tasks::initproc::{get_libc_path, get_glibc_path,get_dyn_path}; // 添加get_glibc_path导入   
-use crate::{  
-    consts::USER_DYN_ADDR,  
-    tasks::{  
-        elf::{init_task_stack, ElfExtra},  
-        MapTrack, MemArea, MemType,  
-    },  
-};  
-use alloc::{  
-    boxed::Box,  
-    string::{String, ToString},  
-    sync::Arc,  
-    vec::Vec,  
-};  
-use async_recursion::async_recursion;  
-use core::ops::{Add, Mul};  
-use devices::{frame_alloc_much, FrameTracker, PAGE_SIZE};  
-use fs::{file::File, pathbuf::PathBuf, OpenFlags};  
-use polyhal::MappingFlags;  
-use sync::Mutex;  
-use syscalls::Errno;  
-use xmas_elf::program::{SegmentData, Type};  
-  
-// 添加libc类型枚举  
-#[derive(Debug, Clone, Copy)]  
-enum LibcType {  
-    Musl,  
-    Glibc,  
-    Unknown,  
-}  
-  
-// 添加检测libc类型的函数  
-fn detect_libc_type(elf: &xmas_elf::ElfFile) -> LibcType {  
-    if let Some(header) = elf.program_iter().find(|ph| ph.get_type() == Ok(Type::Interp)) {  
-        if let Ok(SegmentData::Undefined(data)) = header.get_data(&elf) {  
-            if let Ok(interp_path) = core::str::from_utf8(data) {  
-                let interp_path = interp_path.trim_end_matches('\0');  
-                if interp_path.contains("musl") {  
-                    return LibcType::Musl;  
-                } else if interp_path.contains("glibc") || interp_path.contains("ld-linux") {  
-                    return LibcType::Glibc;  
-                }  
-            }  
-        }  
-    }  
-    LibcType::Unknown  
-}  
-  
-pub struct TaskCacheTemplate {  
-    name: PathBuf,  
-    entry: usize,  
-    maps: Vec<MemArea>,  
-    base: usize,  
-    heap_bottom: usize,  
-    ph_count: usize,  
-    ph_entry_size: usize,  
-    ph_addr: usize,  
-}  
-  
-pub static TASK_CACHES: Mutex<Vec<TaskCacheTemplate>> = Mutex::new(Vec::new());  
-  
-pub fn cache_task_template(path: PathBuf) -> Result<(), Errno> {  
-    let file = File::open(path.clone(), OpenFlags::O_RDONLY)?;  
-    let file_size = file.file_size()?;  
-    let frame_paddr = frame_alloc_much(file_size.div_ceil(PAGE_SIZE));  
-    let buffer = frame_paddr.as_ref().unwrap()[0].slice_mut_with_len(file_size);  
-    let rsize = file.readat(0, buffer)?;  
-    assert_eq!(rsize, file_size);  
-      
-    if let Ok(elf) = xmas_elf::ElfFile::new(&buffer) {  
-        let elf_header = elf.header;  
-        let entry_point = elf.header.pt2.entry_point() as usize;  
-          
-        assert_eq!(  
-            elf_header.pt1.magic,  
-            [0x7f, 0x45, 0x4c, 0x46],  
-            "invalid elf!"  
-        );  
-  
-        let header = elf  
-            .program_iter()  
-            .find(|ph| ph.get_type() == Ok(Type::Interp));  
-  
-        if let Some(_header) = header {  
-            unimplemented!("can't cache dynamic file.");  
-        }  
-  
-        let heap_bottom = elf  
-            .program_iter()  
-            .map(|x| (x.virtual_addr() + x.mem_size()) as usize)  
-            .max()  
-            .unwrap()  
-            .div_ceil(PAGE_SIZE)  
-            .mul(PAGE_SIZE);  
-  
-        let base = elf.relocate(USER_DYN_ADDR).unwrap_or(0);  
-        let mut maps = Vec::new();  
-  
-        elf.program_iter()  
-            .filter(|x| x.get_type().unwrap() == xmas_elf::program::Type::Load)  
-            .for_each(|ph| {  
-                let file_size = ph.file_size() as usize;  
-                let mem_size = ph.mem_size() as usize;  
-                let offset = ph.offset() as usize;  
-                let virt_addr = base + ph.virtual_addr() as usize;  
-                let vpn = virt_addr / PAGE_SIZE;  
-  
-                let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;  
-                let pages: Vec<Arc<FrameTracker>> = frame_alloc_much(page_count)  
-                    .expect("can't alloc in cache task template")  
-                    .into_iter()  
-                    .map(|x| Arc::new(x))  
-                    .collect();  
-                let ppn_space = pages[0]  
-                    .add(virt_addr % PAGE_SIZE)  
-                    .slice_mut_with_len(file_size);  
-  
-                ppn_space.copy_from_slice(&buffer[offset..offset + file_size]);  
-  
-                maps.push(MemArea {  
-                    mtype: MemType::CodeSection,  
-                    mtrackers: pages  
-                        .into_iter()  
-                        .enumerate()  
-                        .map(|(i, x)| MapTrack {  
-                            vaddr: va!((vpn + i) * PAGE_SIZE),  
-                            tracker: x,  
-                            rwx: 0,  
-                        })  
-                        .collect(),  
-                    file: None,  
-                    offset: 0,  
-                    start: vpn * PAGE_SIZE,  
-                    len: page_count * PAGE_SIZE,  
-                })  
-            });  
-        TASK_CACHES.lock().push(TaskCacheTemplate {  
-            name: path,  
-            entry: entry_point,  
-            maps,  
-            base,  
-            heap_bottom,  
-            ph_count: elf_header.pt2.ph_count() as _,  
-            ph_entry_size: elf_header.pt2.ph_entry_size() as _,  
-            ph_addr: elf.get_ph_addr().unwrap_or(0) as _,  
-        });  
-    }  
-    Ok(())  
-}  
+use super::UserTask;
+use crate::tasks::initproc::{get_dyn_path, get_glibc_path, get_libc_path}; // 添加get_glibc_path导入
+use crate::{
+    consts::USER_DYN_ADDR,
+    tasks::{
+        elf::{init_task_stack, ElfExtra},
+        MapTrack, MemArea, MemType,
+    },
+};
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
+use async_recursion::async_recursion;
+use core::ops::{Add, Mul};
+use devices::{frame_alloc_much, FrameTracker, PAGE_SIZE};
+use fs::{file::File, pathbuf::PathBuf, OpenFlags};
+use polyhal::MappingFlags;
+use sync::Mutex;
+use syscalls::Errno;
+use xmas_elf::program::{SegmentData, Type};
 
-pub fn validate_elf_segment_mapping(  
-    user_task: &Arc<UserTask>,  
-    elf: &ElfFile,  
-    base: usize,  
-) -> Result<(), &'static str> {  
-    let pcb = user_task.pcb.lock();  
-      
-    // 检查所有LOAD段是否都有对应的内存区域  
-    for ph in elf.program_iter().filter(|x| x.get_type().unwrap() == Type::Load) {  
-        let virt_addr = base + ph.virtual_addr() as usize;  
-        let mem_size = ph.mem_size() as usize;  
-        let end_addr = virt_addr + mem_size;  
-          
-        // 检查是否存在覆盖该地址范围的内存区域  
-        let found = pcb.memset.iter().any(|area| {  
-            area.start <= virt_addr &&   
-            area.start + area.len >= end_addr &&  
-            area.file.is_some()  
-        });  
-          
-        if !found {  
-            warn!("Missing memory mapping for ELF segment: vaddr={:#x}, size={:#x}",   
-                  virt_addr, mem_size);  
-            return Err("Missing ELF segment mapping");  
-        }  
-          
-        // 特别检查低地址区域 (0x10000 - 0x100000)  
-        if virt_addr >= 0x10000 && virt_addr < 0x100000 {  
-            info!("Low address ELF segment mapped: vaddr={:#x}, size={:#x}",   
-                  virt_addr, mem_size);  
-        }  
-    }  
-      
-    Ok(())  
+// 添加libc类型枚举
+#[derive(Debug, Clone, Copy)]
+enum LibcType {
+    Musl,
+    Glibc,
+    Unknown,
 }
 
-#[async_recursion(Sync)]  
-pub async fn exec_with_process(  
-    task: Arc<UserTask>,  
-    curr_dir: PathBuf,  
-    path: String,  
-    args: Vec<String>,  
-    envp: Vec<String>,  
-) -> Result<Arc<UserTask>, Errno> {  
-    let path = curr_dir.join(&path);  
-  
-    let user_task = task.clone();
+// 添加检测libc类型的函数
+fn detect_libc_type(elf: &xmas_elf::ElfFile) -> LibcType {
+    if let Some(header) = elf
+        .program_iter()
+        .find(|ph| ph.get_type() == Ok(Type::Interp))
     {
-        let mut pcb = user_task.pcb.lock();
-        
-        // 标记所有其他线程为已退出，只保留当前线程
-        pcb.threads.retain(|weak_thread| {
-            if let Some(thread) = weak_thread.upgrade() {
-                // 如果是当前线程，保留
-                if thread.task_id == user_task.task_id {
-                    true
-                } else {
-                    // 终止其他线程
-                    false
+        if let Ok(SegmentData::Undefined(data)) = header.get_data(&elf) {
+            if let Ok(interp_path) = core::str::from_utf8(data) {
+                let interp_path = interp_path.trim_end_matches('\0');
+                if interp_path.contains("musl") {
+                    return LibcType::Musl;
+                } else if interp_path.contains("glibc") || interp_path.contains("ld-linux") {
+                    return LibcType::Glibc;
                 }
-            } else {
-                // 已经失效的线程引用，删除
-                false
             }
-        });
-    }
-    {
-        // 禁用中断以确保原子性
-        IRQ::int_disable();
-        
-        let mut pcb = user_task.pcb.lock();
-        warn!("EXEC: Before clear - task_id={}, memset size={}", user_task.task_id, pcb.memset.len());
-        pcb.memset.clear();  
-        // 在这里立即释放PCB锁但保持中断禁用
-        drop(pcb);
-        
-        // 确保页表操作也是原子的
-        user_task.page_table.restore();  
-        user_task.page_table.change();  
-        
-        // 重新启用中断
-        IRQ::int_enable();
-    } 
-  
-    let caches = TASK_CACHES.lock();  
-    warn!("EXEC: Checking cache for path: {}", path.path());
-    warn!("EXEC: Available cache entries: {}", caches.len());
-    for (i, cache) in caches.iter().enumerate() {
-        warn!("EXEC: Cache {}: name={}", i, cache.name.path());
-    }
-    if let Some(cache_task) = caches.iter().find(|x| x.name == path) {
-        warn!("EXEC: Found cached task for {}", path.path());  
-        init_task_stack(  
-            user_task.clone(),  
-            args,  
-            cache_task.base,  
-            &path.path(),  
-            cache_task.entry,  
-            cache_task.ph_count,  
-            cache_task.ph_entry_size,  
-            cache_task.ph_addr,  
-            cache_task.heap_bottom,  
-        );  
-  
-        for area in &cache_task.maps {  
-            user_task.inner_map(|pcb| {  
-                pcb.memset  
-                    .sub_area(area.start, area.start + area.len, &user_task.page_table);  
-                pcb.memset.push(area.clone());  
-            });  
-            for mtracker in area.mtrackers.iter() {  
-                user_task.map(mtracker.tracker.0, mtracker.vaddr, MappingFlags::URX);  
-            }  
-        }  
-        Ok(user_task)  
-    } else {  
-        warn!("EXEC: No cache found, loading ELF from file: {}", path.path());
-        
-        // 特别关注sleep命令的执行
-        if path.path().contains("sleep") {
-            warn!("EXEC_SLEEP: Loading sleep command from {}, args={:?} (arch: {})", 
-                  path.path(), args,
-                  if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
         }
-        
-        drop(caches);  
-          
-        let file = match File::open(path.clone(), OpenFlags::O_RDONLY).map(Arc::new) {
-            Ok(file) => file.clone(),
-            Err(e) => {
-                // 如果文件不存在，且路径是简单命令名（如 /sleep），尝试使用busybox
-                if e == Errno::ENOENT {
-                    let path_str = path.path();
-                    if path_str.starts_with("/") && !path_str[1..].contains("/") {
-                        // 这是一个根目录下的简单命令，尝试使用busybox
-                        let command_name = &path_str[1..]; // 去掉开头的 "/"
-                        let busybox_path = if curr_dir.path().starts_with("/musl") {
-                            "/musl/busybox"
-                        } else if curr_dir.path().starts_with("/glibc") {
-                            "/glibc/busybox"
-                        } else {
-                            "/musl/busybox" // 默认使用musl busybox
-                        };
-                        
-                        warn!("EXEC: File {} not found, trying busybox with command {} (arch: {})", 
-                            path_str, command_name, 
-                            if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
-                        let mut new_args = vec![busybox_path.to_string(), command_name.to_string()];
-                        if args.len() > 1 {
-                            new_args.extend(args[1..].iter().cloned());
-                        }
-                        warn!("EXEC: Busybox args: {:?}", new_args);
-                        return exec_with_process(task, curr_dir, busybox_path.to_string(), new_args, envp).await;
-                    }
-                }
-                return Err(e);
-            }
-        };  
-        let file_size = file.file_size()?;  
-        let frame_ppn = frame_alloc_much(file_size.div_ceil(PAGE_SIZE));  
-        let buffer = frame_ppn.as_ref().unwrap()[0].slice_mut_with_len(file_size);  
-        let rsize = file.readat(0, buffer)?;  
-        assert_eq!(rsize, file_size);  
-          
-        let elf = if let Ok(elf) = xmas_elf::ElfFile::new(&buffer) {  
-            elf  
-        } else {  
-            let mut new_args = vec!["busybox".to_string(), "sh".to_string()];  
-            args.iter().for_each(|x| new_args.push(x.clone()));  
-            return exec_with_process(task, curr_dir, String::from("busybox"), new_args, envp)  
-                .await;  
-        };  
-        let elf_header = elf.header;  
-  
-        let entry_point = elf.header.pt2.entry_point() as usize;  
-        assert_eq!(  
-            elf_header.pt1.magic,  
-            [0x7f, 0x45, 0x4c, 0x46],  
-            "invalid elf!"  
-        );  
-          
-        let user_task = task.clone();  
-  
-        // 检查是否需要动态链接器，并根据libc类型选择相应的链接器  
-        let header = elf  
-            .program_iter()  
-            .find(|ph| ph.get_type() == Ok(Type::Interp));  
-        if let Some(header) = header {  
-            if let Ok(SegmentData::Undefined(_data)) = header.get_data(&elf) {  
-                drop(frame_ppn);  
-                  
-                // 根据检测到的libc类型选择相应的动态链接器  
-                let libc_path = match detect_libc_type(&elf) {  
-                    LibcType::Musl => get_libc_path(),  
-                    LibcType::Glibc => get_glibc_path(),  
-                    LibcType::Unknown => get_dyn_path(), // 默认使用musl 
-                };  
-                  
-                let mut new_args = vec![libc_path];
-                // 第二个参数应该是要执行的程序的绝对路径
-                new_args.push(path.path().to_string());
-                // 然后添加原始的程序参数（跳过第一个参数，因为那是程序名）
-                if args.len() > 1 {
-                    new_args.extend(args[1..].iter().cloned());
-                }
-                warn!("EXEC: Dynamic linker args: {:?}", new_args);
-                return exec_with_process(task, curr_dir, new_args[0].clone(), new_args, envp)  
-                    .await;  
-            }  
-        }  
-  
-        let heap_bottom = elf  
-            .program_iter()  
-            .map(|x| (x.virtual_addr() + x.mem_size()) as usize)  
-            .max()  
-            .unwrap()  
-            .div_ceil(PAGE_SIZE)  
-            .mul(PAGE_SIZE);  
-  
-        let base = elf.relocate(USER_DYN_ADDR).unwrap_or(0);  
-        init_task_stack(  
-            user_task.clone(),  
-            args,  
-            base,  
-            &path.path(),  
-            entry_point,  
-            elf_header.pt2.ph_count() as usize,  
-            elf_header.pt2.ph_entry_size() as usize,  
-            elf.get_ph_addr().unwrap_or(0) as usize,  
-            heap_bottom,  
-        );  
+    }
+    LibcType::Unknown
+}
 
-        fn elf_flags_to_mapping_flags(elf_flags: xmas_elf::program::Flags) -> MappingFlags {
-            let mut flags = MappingFlags::U; // 用户可访问
-            
-            if elf_flags.is_read() {
-                flags |= MappingFlags::R;
-            }
-            if elf_flags.is_write() {
-                flags |= MappingFlags::W;
-            }
-            if elf_flags.is_execute() {
-                flags |= MappingFlags::X;
-            }
-            
-            // 确保至少有读权限
-            if !flags.contains(MappingFlags::R) {
-                flags |= MappingFlags::R;
-            }
-            
-            flags
+pub struct TaskCacheTemplate {
+    name: PathBuf,
+    entry: usize,
+    maps: Vec<MemArea>,
+    base: usize,
+    heap_bottom: usize,
+    ph_count: usize,
+    ph_entry_size: usize,
+    ph_addr: usize,
+}
+
+pub static TASK_CACHES: Mutex<Vec<TaskCacheTemplate>> = Mutex::new(Vec::new());
+
+pub fn cache_task_template(path: PathBuf) -> Result<(), Errno> {
+    let file = File::open(path.clone(), OpenFlags::O_RDONLY)?;
+    let file_size = file.file_size()?;
+    let frame_paddr = frame_alloc_much(file_size.div_ceil(PAGE_SIZE));
+    let buffer = frame_paddr.as_ref().unwrap()[0].slice_mut_with_len(file_size);
+    let rsize = file.readat(0, buffer)?;
+    assert_eq!(rsize, file_size);
+
+    if let Ok(elf) = xmas_elf::ElfFile::new(&buffer) {
+        let elf_header = elf.header;
+        let entry_point = elf.header.pt2.entry_point() as usize;
+
+        assert_eq!(
+            elf_header.pt1.magic,
+            [0x7f, 0x45, 0x4c, 0x46],
+            "invalid elf!"
+        );
+
+        let header = elf
+            .program_iter()
+            .find(|ph| ph.get_type() == Ok(Type::Interp));
+
+        if let Some(_header) = header {
+            unimplemented!("can't cache dynamic file.");
         }
-  
+
+        let heap_bottom = elf
+            .program_iter()
+            .map(|x| (x.virtual_addr() + x.mem_size()) as usize)
+            .max()
+            .unwrap()
+            .div_ceil(PAGE_SIZE)
+            .mul(PAGE_SIZE);
+
+        let base = elf.relocate(USER_DYN_ADDR).unwrap_or(0);
+        let mut maps = Vec::new();
+
         elf.program_iter()
             .filter(|x| x.get_type().unwrap() == xmas_elf::program::Type::Load)
             .for_each(|ph| {
@@ -413,55 +109,203 @@ pub async fn exec_with_process(
                 let virt_addr = base + ph.virtual_addr() as usize;
                 let vpn = virt_addr / PAGE_SIZE;
 
-                // 获取ELF段的权限并转换为页面权限
-                let elf_flags = ph.flags();
-                let mapping_flags = elf_flags_to_mapping_flags(elf_flags);
-
                 let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;
-                
-                let ppn_start = user_task.map_frames(
-                    va!(virt_addr).floor(), 
-                    MemType::CodeSection, 
-                    page_count,
-                    Some(file.get_bare_file()), 
-                    offset,
-                    virt_addr,
-                    mem_size,
-                    mapping_flags
-                );
-                
-                if let Some(ppn_start) = ppn_start {
-                    // 修复地址计算和内存初始化
-                    let page_offset = virt_addr % PAGE_SIZE;
-                    let target_paddr = ppn_start.add(page_offset);
-                    
-                    // 首先清零整个内存区域（处理BSS段）
-                    let total_space: &mut [u8] = ppn_start.slice_mut_with_len(page_count * PAGE_SIZE);
-                    total_space.fill(0);
-                    
-                    // 然后复制文件内容（如果有的话）
-                    if file_size > 0 {
-                        let file_space: &mut [u8] = target_paddr.slice_mut_with_len(file_size);
-                        file_space.copy_from_slice(&buffer[offset..offset + file_size]);
-                    }
-                    
-                    debug!("Loaded ELF segment: vaddr={:#x}, file_size={:#x}, mem_size={:#x}, flags={:?}", 
-                        virt_addr, file_size, mem_size, mapping_flags);
-                } else {
-                    panic!("Failed to allocate memory for ELF segment at {:#x}", virt_addr);
-                }
-            });
+                let pages: Vec<Arc<FrameTracker>> = frame_alloc_much(page_count)
+                    .expect("can't alloc in cache task template")
+                    .into_iter()
+                    .map(|x| Arc::new(x))
+                    .collect();
+                let ppn_space = pages[0]
+                    .add(virt_addr % PAGE_SIZE)
+                    .slice_mut_with_len(file_size);
 
-        info!("ELF loading completed. Memory areas:");  
-        for (i, area) in user_task.pcb.lock().memset.iter().enumerate() {  
-            info!("  Area {}: start={:#x}, len={:#x}, offset={:#x}, type={:?}, has_file={}",   
-                  i, area.start, area.len, area.offset, area.mtype, area.file.is_some());  
+                ppn_space.copy_from_slice(&buffer[offset..offset + file_size]);
+
+                maps.push(MemArea {
+                    mtype: MemType::CodeSection,
+                    mtrackers: pages
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, x)| MapTrack {
+                            vaddr: va!((vpn + i) * PAGE_SIZE),
+                            tracker: x,
+                            rwx: 0,
+                        })
+                        .collect(),
+                    file: None,
+                    offset: 0,
+                    start: vpn * PAGE_SIZE,
+                    len: page_count * PAGE_SIZE,
+                })
+            });
+        TASK_CACHES.lock().push(TaskCacheTemplate {
+            name: path,
+            entry: entry_point,
+            maps,
+            base,
+            heap_bottom,
+            ph_count: elf_header.pt2.ph_count() as _,
+            ph_entry_size: elf_header.pt2.ph_entry_size() as _,
+            ph_addr: elf.get_ph_addr().unwrap_or(0) as _,
+        });
+    }
+    Ok(())
+}
+
+#[async_recursion(Sync)]
+pub async fn exec_with_process(
+    task: Arc<UserTask>,
+    curr_dir: PathBuf,
+    path: String,
+    args: Vec<String>,
+    envp: Vec<String>,
+) -> Result<Arc<UserTask>, Errno> {
+    let path = curr_dir.join(&path);
+
+    let user_task = task.clone();
+    user_task.pcb.lock().memset.clear();
+    user_task.page_table.restore();
+    user_task.page_table.change();
+
+    let caches = TASK_CACHES.lock();
+    if let Some(cache_task) = caches.iter().find(|x| x.name == path) {
+        init_task_stack(
+            user_task.clone(),
+            args,
+            cache_task.base,
+            &path.path(),
+            cache_task.entry,
+            cache_task.ph_count,
+            cache_task.ph_entry_size,
+            cache_task.ph_addr,
+            cache_task.heap_bottom,
+        );
+
+        for area in &cache_task.maps {
+            user_task.inner_map(|pcb| {
+                pcb.memset
+                    .sub_area(area.start, area.start + area.len, &user_task.page_table);
+                pcb.memset.push(area.clone());
+            });
+            for mtracker in area.mtrackers.iter() {
+                user_task.map(mtracker.tracker.0, mtracker.vaddr, MappingFlags::URX);
+            }
+        }
+        Ok(user_task)
+    } else {
+        drop(caches);
+
+        let file = File::open(path.clone(), OpenFlags::O_RDONLY)
+            .map(Arc::new)?
+            .clone();
+        let file_size = file.file_size()?;
+        let frame_ppn = frame_alloc_much(file_size.div_ceil(PAGE_SIZE));
+        let buffer = frame_ppn.as_ref().unwrap()[0].slice_mut_with_len(file_size);
+        let rsize = file.readat(0, buffer)?;
+        assert_eq!(rsize, file_size);
+
+        let elf = if let Ok(elf) = xmas_elf::ElfFile::new(&buffer) {
+            elf
+        } else {
+            let mut new_args = vec!["busybox".to_string(), "sh".to_string()];
+            args.iter().for_each(|x| new_args.push(x.clone()));
+            return exec_with_process(task, curr_dir, String::from("busybox"), new_args, envp)
+                .await;
+        };
+        let elf_header = elf.header;
+
+        let entry_point = elf.header.pt2.entry_point() as usize;
+        assert_eq!(
+            elf_header.pt1.magic,
+            [0x7f, 0x45, 0x4c, 0x46],
+            "invalid elf!"
+        );
+
+        let user_task = task.clone();
+
+        // 检查是否需要动态链接器，并根据libc类型选择相应的链接器
+        let header = elf
+            .program_iter()
+            .find(|ph| ph.get_type() == Ok(Type::Interp));
+        if let Some(header) = header {
+            if let Ok(SegmentData::Undefined(_data)) = header.get_data(&elf) {
+                drop(frame_ppn);
+
+                // 根据检测到的libc类型选择相应的动态链接器
+                let libc_path = match detect_libc_type(&elf) {
+                    LibcType::Musl => get_libc_path(),
+                    LibcType::Glibc => get_dyn_path(),
+                    LibcType::Unknown => get_dyn_path(), // 默认使用musl
+                };
+
+                let mut new_args = vec![libc_path];
+                // 第二个参数应该是要执行的程序的绝对路径
+                new_args.push(path.path().to_string());
+                // 然后添加原始的程序参数（跳过第一个参数，因为那是程序名）
+                if args.len() > 1 {
+                    new_args.extend(args[1..].iter().cloned());
+                }
+                warn!("EXEC: Dynamic linker args: {:?}", new_args);
+                return exec_with_process(task, curr_dir, new_args[0].clone(), new_args, envp)
+                    .await;
+            }
         }
 
-        if let Err(e) = validate_elf_segment_mapping(&user_task, &elf, base) {  
-            warn!("ELF segment mapping validation failed: {}", e);  
-            return Err(Errno::ENOEXEC);  
-        }  
-        Ok(user_task)  
-    }  
+        let heap_bottom = elf
+            .program_iter()
+            .map(|x| (x.virtual_addr() + x.mem_size()) as usize)
+            .max()
+            .unwrap()
+            .div_ceil(PAGE_SIZE)
+            .mul(PAGE_SIZE);
+
+        let base = elf.relocate(USER_DYN_ADDR).unwrap_or(0);
+        init_task_stack(
+            user_task.clone(),
+            args,
+            base,
+            &path.path(),
+            entry_point,
+            elf_header.pt2.ph_count() as usize,
+            elf_header.pt2.ph_entry_size() as usize,
+            elf.get_ph_addr().unwrap_or(0) as usize,
+            heap_bottom,
+        );
+
+        elf.program_iter()
+            .filter(|x| x.get_type().unwrap() == xmas_elf::program::Type::Load)
+            .for_each(|ph| {
+                let file_size = ph.file_size() as usize;
+                let mem_size = ph.mem_size() as usize;
+                let offset = ph.offset() as usize;
+                let virt_addr = base + ph.virtual_addr() as usize;
+                let vpn = virt_addr / PAGE_SIZE;
+
+                // // 确保创建对应的内存区域，包含文件信息
+                // let area = MemArea {
+                //     start: virt_addr,
+                //     len: mem_size,
+                //     offset: offset,
+                //     file: Some(file.get_bare_file()), // 关键：保存文件引用
+                //     mtype: MemType::CodeSection,
+                //     mtrackers: Vec::new(),
+                // };
+                // user_task.pcb.lock().memset.push(area);
+
+                let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;
+                let ppn_start =
+                    user_task.frame_alloc(va!(virt_addr).floor(), MemType::CodeSection, page_count);
+                let page_space = va!(virt_addr).slice_mut_with_len(file_size);
+                let ppn_space = ppn_start
+                    .expect("not have enough memory")
+                    .add(virt_addr % PAGE_SIZE)
+                    .slice_mut_with_len(file_size);
+
+                page_space.copy_from_slice(&buffer[offset..offset + file_size]);
+                assert_eq!(ppn_space, page_space);
+                assert_eq!(&buffer[offset..offset + file_size], ppn_space);
+                assert_eq!(&buffer[offset..offset + file_size], page_space);
+            });
+        Ok(user_task)
+    }
 }
