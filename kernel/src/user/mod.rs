@@ -254,11 +254,144 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
 
             task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
         }
+        // 在现有的地址范围检查中添加新的条件
+        else if vaddr.raw() >= 0x200a0000 && vaddr.raw() < 0x300b0000 {
+            warn!("Detected gap region access for vaddr: {:#x}", vaddr.raw());
 
-        warn!(
-            "No suitable memory region found for vaddr: {:#x}, sending SIGSEGV",
-            vaddr.raw()
-        );
+            // 添加详细的调试信息
+            warn!(
+                "Current task: task_id={}, process_id={}",
+                task.task_id, task.process_id
+            );
+            warn!("Available memory areas:");
+            for (i, area) in task.pcb.lock().memset.iter().enumerate() {
+                warn!(
+                    "  Area {}: start={:#x}, end={:#x}, type={:?}",
+                    i,
+                    area.start,
+                    area.start + area.len,
+                    area.mtype
+                );
+            }
+
+            // 尝试从 ELF 文件加载正确的内容
+            if let Some((file, file_offset, _)) = task.get_elf_segment_for_addr(vaddr) {
+                warn!(
+                    "Found ELF segment for gap region at offset: {:#x}",
+                    file_offset
+                );
+
+                // 获取文件大小
+                let mut stat = Stat::default();
+                let file_size = if file.stat(&mut stat).is_ok() {
+                    stat.size as usize
+                } else {
+                    warn!(
+                        "Failed to get file size for gap region vaddr: {:#x}",
+                        vaddr.raw()
+                    );
+                    return;
+                };
+
+                // 验证文件偏移是否在有效范围内
+                if file_offset >= file_size {
+                    warn!(
+                        "File offset {:#x} exceeds file size {:#x} for gap region vaddr: {:#x}",
+                        file_offset,
+                        file_size,
+                        vaddr.raw()
+                    );
+                    return;
+                }
+
+                let page_count = 1;
+                if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count)
+                {
+                    let page_data = ppn.slice_mut_with_len(PAGE_SIZE);
+
+                    // 计算实际可读取的大小
+                    let remaining_file_size = file_size - file_offset;
+                    let read_size = core::cmp::min(PAGE_SIZE, remaining_file_size);
+
+                    if read_size > 0 {
+                        if let Ok(_) = file.readat(file_offset, &mut page_data[..read_size]) {
+                            warn!("Successfully loaded ELF content for gap region vaddr: {:#x}, read_size: {:#x}",  
+                        vaddr.raw(), read_size);
+
+                            // 验证映射是否成功
+                            if let Some((mapped_ppn, _)) = task.page_table.translate(vaddr.floor())
+                            {
+                                warn!("ELF content mapping verification successful: vaddr={:#x} -> ppn={:#x}",   
+                            vaddr.floor().raw(), mapped_ppn.raw());
+                            } else {
+                                warn!(
+                                    "ELF content mapping verification FAILED for vaddr: {:#x}",
+                                    vaddr.floor().raw()
+                                );
+                            }
+                            return;
+                        } else {
+                            warn!(
+                                "Failed to read ELF content for gap region vaddr: {:#x}",
+                                vaddr.raw()
+                            );
+                        }
+                    } else {
+                        warn!(
+                            "No ELF data to read at offset {:#x} for gap region vaddr: {:#x}",
+                            file_offset,
+                            vaddr.raw()
+                        );
+                    }
+                } else {
+                    warn!(
+                        "Failed to allocate memory for ELF content at gap region vaddr: {:#x}",
+                        vaddr.raw()
+                    );
+                }
+            } else {
+                warn!(
+                    "No ELF segment found for gap region vaddr: {:#x}",
+                    vaddr.raw()
+                );
+            }
+
+            // 如果 ELF 加载失败，回退到空白页面分配
+            warn!(
+                "Falling back to blank page allocation for gap region vaddr: {:#x}",
+                vaddr.raw()
+            );
+            let page_count = 1;
+            if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count) {
+                warn!("Successfully allocated blank CodeSection for gap region vaddr: {:#x}, ppn: {:#x}",   
+            vaddr.raw(), ppn.raw());
+
+                // 验证映射是否成功
+                if let Some((mapped_ppn, _)) = task.page_table.translate(vaddr.floor()) {
+                    warn!(
+                        "Blank page mapping verification successful: vaddr={:#x} -> ppn={:#x}",
+                        vaddr.floor().raw(),
+                        mapped_ppn.raw()
+                    );
+                } else {
+                    warn!(
+                        "Blank page mapping verification FAILED for vaddr: {:#x}",
+                        vaddr.floor().raw()
+                    );
+                }
+                return;
+            } else {
+                warn!(
+                    "Failed to allocate blank CodeSection for gap region vaddr: {:#x}",
+                    vaddr.raw()
+                );
+            }
+        }
+
+        // warn!(
+        //     "No suitable memory region found for vaddr: {:#x}, sending SIGSEGV",
+        //     vaddr.raw()
+        // );
         task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
     }
 }

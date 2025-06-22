@@ -202,80 +202,44 @@ impl Ext4FileWrapper {
 
 impl INodeInterface for Ext4FileWrapper {
     fn readat(&self, offset: usize, buffer: &mut [u8]) -> VfsResult<usize> {
-        // 添加重试机制防止校验和失败时卡死
-        let max_retries = 3;
-        let mut retry_count = 0;
+        const MAX_RETRIES: usize = 3;
 
-        loop {
-            retry_count += 1;
-
+        for attempt in 0..MAX_RETRIES {
             let mut file = self.inner.lock();
             let path = file.get_path();
             let path = path.to_str().unwrap();
 
-            // 使用match模式处理可能的错误
             match file.file_open(path, O_RDONLY) {
-                Ok(_) => {
-                    match file.file_seek(offset as _, 0) {
-                        Ok(_) => {
-                            match file.file_read(buffer) {
-                                Ok(rsize) => {
-                                    let _ = file.file_close();
-                                    return Ok(rsize);
-                                }
-                                Err(e) => {
-                                    let _ = file.file_close();
-                                    if retry_count >= max_retries {
-                                        log::warn!(
-                                            "readat file_read failed after {} retries, error: {}",
-                                            max_retries,
-                                            e
-                                        );
-                                        return Ok(0); // 返回0字节而不是错误，避免系统崩溃
-                                    }
-                                    log::warn!(
-                                        "readat file_read failed on attempt {}, retrying...",
-                                        retry_count
-                                    );
-                                    continue;
-                                }
-                            }
+                Ok(_) => match file.file_seek(offset as _, 0) {
+                    Ok(_) => match file.file_read(buffer) {
+                        Ok(rsize) => {
+                            let _ = file.file_close();
+                            return Ok(rsize);
                         }
                         Err(e) => {
                             let _ = file.file_close();
-                            if retry_count >= max_retries {
-                                log::warn!(
-                                    "readat file_seek failed after {} retries, error: {}",
-                                    max_retries,
-                                    e
-                                );
-                                return Ok(0);
+                            if attempt == MAX_RETRIES - 1 {
+                                return Err(map_ext4_err(e));
                             }
-                            log::warn!(
-                                "readat file_seek failed on attempt {}, retrying...",
-                                retry_count
-                            );
-                            continue;
+                        }
+                    },
+                    Err(e) => {
+                        let _ = file.file_close();
+                        if attempt == MAX_RETRIES - 1 {
+                            return Err(map_ext4_err(e));
                         }
                     }
-                }
+                },
                 Err(e) => {
-                    if retry_count >= max_retries {
-                        log::warn!(
-                            "readat file_open failed after {} retries, error: {}",
-                            max_retries,
-                            e
-                        );
-                        return Ok(0);
+                    if attempt == MAX_RETRIES - 1 {
+                        return Err(map_ext4_err(e));
                     }
-                    log::warn!(
-                        "readat file_open failed on attempt {}, retrying...",
-                        retry_count
-                    );
-                    continue;
                 }
             }
         }
+
+        // Fallback: return EIO error using map_ext4_err
+        Err(map_ext4_err(5)) // 5 is EIO as defined in ext4_errno.h
     }
 
     fn writeat(&self, offset: usize, buffer: &[u8]) -> VfsResult<usize> {

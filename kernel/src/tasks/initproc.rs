@@ -127,8 +127,9 @@ async fn command(cmd: &str, work_dir: PathBuf) {
                 args_extend.into_iter().map(String::from).collect(),
                 Vec::<&str>::new().into_iter().map(String::from).collect(),
             )
-            .await {
-                Ok(_) => {},
+            .await
+            {
+                Ok(_) => {}
                 Err(e) => {
                     println!("exec failed for {}: {:?}", filename, e);
                     return;
@@ -159,15 +160,19 @@ pub async fn initproc() {
         set_libc_path("/musl/lib/libc.so".to_string());
         set_dyn_path("/musl/lib/libc.so".to_string());
         //set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
-        
+
         // 创建必要的链接以支持busybox测试
         let home_dir = PathBuf::from("/musl/basic");
         command("/musl/busybox mkdir -p /bin", home_dir.clone()).await;
         command("/musl/busybox cp /musl/busybox /sleep", home_dir.clone()).await;
-        command("/musl/busybox cp /musl/busybox /bin/sleep", home_dir.clone()).await;
+        command(
+            "/musl/busybox cp /musl/busybox /bin/sleep",
+            home_dir.clone(),
+        )
+        .await;
         command("/musl/busybox chmod +x /sleep", home_dir.clone()).await;
         command("/musl/busybox chmod +x /bin/sleep", home_dir.clone()).await;
-        //command("/musl/busybox sh", home_dir.clone()).await;
+        command("/musl/busybox sh", home_dir.clone()).await;
         command(
             "/musl/busybox cp /glibc/lib/libm.so /glibc/lib/libm.so.6",
             home_dir.clone(),
@@ -178,6 +183,7 @@ pub async fn initproc() {
             home_dir.clone(),
         )
         .await;
+
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START basic-musl ####",
             home_dir.clone(),
@@ -190,6 +196,12 @@ pub async fn initproc() {
         )
         .await;
         let home_dir = PathBuf::from("/musl");
+        // command(
+        //     "/musl/busybox sh /musl/iozone_testcode.sh",
+        //     home_dir.clone(),
+        // )
+        // .await;
+        command("/musl/busybox sh ", home_dir.clone()).await;
         command(
             "/musl/busybox sh /musl/libcbench_testcode.sh",
             home_dir.clone(),
@@ -221,8 +233,16 @@ pub async fn initproc() {
         let glibc_home_dir = PathBuf::from("/glibc/basic");
         // 为glibc环境创建链接
         command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
-        command("/glibc/busybox cp /glibc/busybox /sleep", glibc_home_dir.clone()).await;
-        command("/glibc/busybox cp /glibc/busybox /bin/sleep", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /bin/sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
         command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
         command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
         //command("/musl/busybox sh", glibc_home_dir.clone()).await;
@@ -245,8 +265,16 @@ pub async fn initproc() {
         let glibc_home_dir = PathBuf::from("/glibc");
         // 确保glibc目录也有正确的链接
         command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
-        command("/glibc/busybox cp /glibc/busybox /sleep", glibc_home_dir.clone()).await;
-        command("/glibc/busybox cp /glibc/busybox /bin/sleep", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /bin/sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
         command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
         command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
         command(
@@ -443,12 +471,16 @@ pub async fn initproc() {
         set_libc_path("/musl/lib/libc.so".to_string());
         set_dyn_path("/musl/lib/libc.so".to_string());
         println!("start kernel tasks");
-        
+
         // 创建必要的链接以支持busybox测试
         let home_dir = PathBuf::from("/musl/basic");
         command("/musl/busybox mkdir -p /bin", home_dir.clone()).await;
         command("/musl/busybox cp /musl/busybox /sleep", home_dir.clone()).await;
-        command("/musl/busybox cp /musl/busybox /bin/sleep", home_dir.clone()).await;
+        command(
+            "/musl/busybox cp /musl/busybox /bin/sleep",
+            home_dir.clone(),
+        )
+        .await;
         command("/musl/busybox chmod +x /sleep", home_dir.clone()).await;
         command("/musl/busybox chmod +x /bin/sleep", home_dir.clone()).await;
         //command("/musl/busybox sh", home_dir.clone()).await;
@@ -642,8 +674,16 @@ pub async fn initproc() {
         let glibc_home_dir = PathBuf::from("/glibc/basic");
         // 为glibc环境创建链接
         command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
-        command("/glibc/busybox cp /glibc/busybox /sleep", glibc_home_dir.clone()).await;
-        command("/glibc/busybox cp /glibc/busybox /bin/sleep", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /bin/sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
         command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
         command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
         //command("/glibc/busybox sh", glibc_home_dir.clone()).await;
@@ -666,8 +706,16 @@ pub async fn initproc() {
         let glibc_home_dir = PathBuf::from("/glibc");
         // 确保glibc目录也有正确的链接
         command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
-        command("/glibc/busybox cp /glibc/busybox /sleep", glibc_home_dir.clone()).await;
-        command("/glibc/busybox cp /glibc/busybox /bin/sleep", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /bin/sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
         command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
         command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
         command(

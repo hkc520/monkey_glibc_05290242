@@ -13,6 +13,28 @@ use super::UserTaskContainer;
 
 impl UserTaskContainer {
     pub async fn handle_signal(&self, signal: SignalFlags) {
+        // 添加详细的信号处理调试信息  
+    warn!("SIGNAL_DEBUG: Handling signal {:?} for task_id={}, process_id={}",   
+        signal, self.task.get_task_id(), self.task.process_id);  
+     warn!("SIGNAL_DEBUG: Signal {:?} source analysis for task {}", signal, self.task.get_task_id());  
+warn!("SIGNAL_DEBUG: Current PC: {:#x}", self.task.force_cx_ref()[TrapFrameArgs::SEPC]);  
+  
+// 检查信号是否由特定地址访问引起  
+if signal == SignalFlags::SIGSEGV {  
+    let current_pc = self.task.force_cx_ref()[TrapFrameArgs::SEPC];  
+    warn!("SIGNAL_DEBUG: SIGSEGV at PC {:#x} - likely caused by memory access failure", current_pc);  
+} 
+    // 特别关注 SIGSEGV 信号  
+    if signal == SignalFlags::SIGSEGV {  
+        warn!("SIGNAL_DEBUG: SIGSEGV received - checking memory layout");  
+        let pcb = self.task.pcb.lock();  
+        warn!("SIGNAL_DEBUG: Task has {} memory areas", pcb.memset.len());  
+        for (i, area) in pcb.memset.iter().enumerate() {  
+            warn!("  Area {}: start={:#x}, end={:#x}, type={:?}",   
+                i, area.start, area.start + area.len, area.mtype);  
+        }  
+        drop(pcb);  
+    }  
         debug!(
             "handle signal: {:?} task_id: {}",
             signal,
@@ -34,6 +56,10 @@ impl UserTaskContainer {
         if sigaction.handler == 0 {
             match signal {
                 SignalFlags::SIGCANCEL | SignalFlags::SIGSEGV | SignalFlags::SIGILL => {
+                   if signal == SignalFlags::SIGSEGV {  
+                warn!("SIGNAL_DEBUG: SIGSEGV default exit - this indicates memory access failure");  
+                warn!("SIGNAL_DEBUG: Check if gap region allocation was successful but mapping failed");  
+            }  
                     current_user_task().exit_with_signal(signal.num());
                 }
                 SignalFlags::SIGTIMER => {
