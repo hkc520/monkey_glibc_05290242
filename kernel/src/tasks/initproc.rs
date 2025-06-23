@@ -502,6 +502,7 @@ pub async fn initproc() {
         )
         .await;
         //let home_dir = PathBuf::from("/musl");
+        let home_dir = PathBuf::from("/musl");
         command(
             "/musl/busybox sh /musl/iozone_testcode.sh",
             home_dir.clone(),
