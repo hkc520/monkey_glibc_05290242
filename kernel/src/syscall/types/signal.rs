@@ -161,7 +161,7 @@ cfg_if! {
             pub fcsr: u32,
             pub scr: [usize; 4],
             pub fregs: [usize; 32],        // _extcontext
-            pub _reserved: [usize; 512],
+            pub _reserved: [usize; 16],    // 减少到16个usize以避免栈溢出
         }
 
         impl SignalUserContext {

@@ -1,0 +1,27 @@
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/Azure-stars/lwext4_rust.git?rev=ee5131c"]
+git = "https://github.com/Azure-stars/lwext4_rust.git"
+rev = "ee5131c"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/Byte-OS/timestamp.git"]
+git = "https://github.com/Byte-OS/timestamp.git"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/byte-os/lose-net-stack?rev=bb99460"]
+git = "https://github.com/byte-os/lose-net-stack"
+rev = "bb99460"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/byte-os/rust-fatfs.git"]
+git = "https://github.com/byte-os/rust-fatfs.git"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/jasonwhite/syscalls.git"]
+git = "https://github.com/jasonwhite/syscalls.git"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

@@ -1,10 +1,10 @@
+use crate::tasks::memset;
 use super::{
     filetable::{rlimits_new, FileTable},
     memset::{MemSet, MemType},
     shm::MapedSharedMemory,
     SignalList,
 };
-use crate::tasks::memset;
 use crate::{
     syscall::types::{
         fd::AT_CWD,
@@ -62,8 +62,8 @@ pub struct ThreadControlBlock {
     pub signal_queue: [usize; REAL_TIME_SIGNAL_NUM], // a queue for real time signals
     pub exit_signal: u8,
     pub thread_exit_code: Option<u32>,
-    pub robust_list_head: usize, // 添加 robust list 头指针
-    pub robust_list_len: usize,  // 添加 robust list 长度
+    pub robust_list_head: usize,    // 添加 robust list 头指针
+    pub robust_list_len: usize,     // 添加 robust list 长度
 }
 
 #[allow(dead_code)]
@@ -121,8 +121,8 @@ impl UserTask {
             signal_queue: [0; REAL_TIME_SIGNAL_NUM],
             exit_signal: 0,
             thread_exit_code: Option::None,
-            robust_list_head: 0, // 初始化为 0
-            robust_list_len: 0,  // 初始化为 0
+            robust_list_head: 0,            // 初始化为 0
+            robust_list_len: 0,             // 初始化为 0
         });
 
         let task = Arc::new(Self {
@@ -154,22 +154,13 @@ impl UserTask {
     pub fn frame_alloc(&self, vaddr: VirtAddr, mtype: MemType, count: usize) -> Option<PhysAddr> {
         // 根据内存类型选择合适的权限
         let mapping_flags = match mtype {
-            MemType::Stack => MappingFlags::URWX, // 栈需要读写执行权限
+            MemType::Stack => MappingFlags::URWX,      // 栈需要读写执行权限
             MemType::CodeSection => MappingFlags::URWX, // 代码段默认读写执行（后续会根据ELF flags调整）
-            MemType::Mmap => MappingFlags::URWX,        // mmap区域默认读写执行
-            MemType::Shared => MappingFlags::URWX,      // 共享内存读写执行
-            MemType::ShareFile => MappingFlags::URW,    // 共享文件读写
+            MemType::Mmap => MappingFlags::URWX,       // mmap区域默认读写执行
+            MemType::Shared => MappingFlags::URWX,     // 共享内存读写执行
+            MemType::ShareFile => MappingFlags::URW,   // 共享文件读写
         };
-        self.map_frames(
-            vaddr,
-            mtype,
-            count,
-            None,
-            0,
-            vaddr.raw(),
-            count * PAGE_SIZE,
-            mapping_flags,
-        )
+        self.map_frames(vaddr, mtype, count, None, 0, vaddr.raw(), count * PAGE_SIZE, mapping_flags)
     }
 
     pub fn map_frames(
@@ -267,18 +258,10 @@ impl UserTask {
 
     #[inline]
     pub fn thread_exit(&self, exit_code: usize) {
-        warn!(
-            "Thread exit: task_id={}, process_id={}, exit_code={}, arch={}",
-            self.task_id,
-            self.process_id,
-            exit_code,
-            if cfg!(target_arch = "loongarch64") {
-                "loongarch64"
-            } else {
-                "other"
-            }
-        );
-
+        warn!("Thread exit: task_id={}, process_id={}, exit_code={}, arch={}", 
+            self.task_id, self.process_id, exit_code,
+            if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
+            
         let mut tcb_writer = self.tcb.write();
         let uaddr = tcb_writer.clear_child_tid;
         if uaddr != 0 {
@@ -289,10 +272,7 @@ impl UserTask {
                 }
                 futex_wake(self.pcb.lock().futex_table.clone(), uaddr, 1);
             } else {
-                warn!(
-                    "Failed to translate clear_child_tid address in thread_exit: {:#x}",
-                    uaddr
-                );
+                warn!("Failed to translate clear_child_tid address in thread_exit: {:#x}", uaddr);
             }
         }
         tcb_writer.thread_exit_code = Some(exit_code as u32);
@@ -302,7 +282,7 @@ impl UserTask {
         // 改进的线程退出逻辑 - 不应该直接清理进程资源
         let should_cleanup_process = {
             let mut pcb = self.pcb.lock();
-
+            
             // 清理线程列表
             pcb.threads.retain(|weak_ref| {
                 if let Some(thread) = weak_ref.upgrade() {
@@ -311,19 +291,16 @@ impl UserTask {
                     false
                 }
             });
-
+            
             let remaining_threads = pcb.threads.len();
             let is_main_thread = self.task_id == self.process_id;
-
+            
             // 更保守的清理条件：只有主线程退出且没有其他活跃线程时才清理
             is_main_thread && remaining_threads == 0
         };
 
         if should_cleanup_process {
-            warn!(
-                "Thread exit triggering process cleanup for process_id={}",
-                self.process_id
-            );
+            warn!("Thread exit triggering process cleanup for process_id={}", self.process_id);
             let mut pcb = self.pcb.lock();
             pcb.memset.clear();
             pcb.fd_table.clear();
@@ -342,10 +319,7 @@ impl UserTask {
                 }
             }
         } else {
-            warn!(
-                "Thread exit: task_id={} exited, but process continues",
-                self.task_id
-            );
+            warn!("Thread exit: task_id={} exited, but process continues", self.task_id);
         }
     }
 
@@ -377,33 +351,38 @@ impl UserTask {
         pcb.memset.iter().for_each(|area| {
             let map_area = area.clone();
 
-            // 检查是否存在内存空隙，如果存在则填补
-            if let Some(next_area) = pcb
-                .memset
-                .iter()
-                .find(|next| next.start > area.start + area.len)
+            // 只在非 LoongArch 架构或特定条件下才进行内存空隙填补
+            // 这避免了对 LoongArch 系统调用测试的干扰
+            #[cfg(not(target_arch = "loongarch64"))]
             {
-                let gap_start = area.start + area.len;
-                let gap_end = next_area.start;
+                // 检查是否存在内存空隙，如果存在则填补
+                if let Some(next_area) = pcb
+                    .memset
+                    .iter()
+                    .find(|next| next.start > area.start + area.len)
+                {
+                    let gap_start = area.start + area.len;
+                    let gap_end = next_area.start;
 
-                if gap_end - gap_start > 0 && gap_end - gap_start < 0x10000 {
-                    // 只处理小于64KB的空隙
-                    warn!(
-                        "Detected memory gap: {:#x} - {:#x}, filling it",
-                        gap_start, gap_end
-                    );
+                    if gap_end - gap_start > 0 && gap_end - gap_start < 0x10000 {
+                        // 只处理小于64KB的空隙
+                        warn!(
+                            "Detected memory gap: {:#x} - {:#x}, filling it",
+                            gap_start, gap_end
+                        );
 
-                    // 创建一个新的内存区域来填补空隙
-                    let gap_area = MemArea {
-                        mtype: MemType::CodeSection,
-                        mtrackers: Vec::new(),
-                        file: area.file.clone(), // 使用相同的文件引用
-                        offset: area.offset + area.len,
-                        start: gap_start,
-                        len: gap_end - gap_start,
-                    };
+                        // 创建一个新的内存区域来填补空隙
+                        let gap_area = MemArea {
+                            mtype: MemType::CodeSection,
+                            mtrackers: Vec::new(),
+                            file: area.file.clone(), // 使用相同的文件引用
+                            offset: area.offset + area.len,
+                            start: gap_start,
+                            len: gap_end - gap_start,
+                        };
 
-                    new_task.pcb.lock().memset.push(gap_area);
+                        new_task.pcb.lock().memset.push(gap_area);
+                    }
                 }
             }
 
@@ -437,7 +416,7 @@ impl UserTask {
     pub fn thread_clone(self: Arc<Self>) -> Arc<Self> {
         let parent_tcb = self.tcb.read();
         let task_id = task_id_alloc();
-
+        
         let tcb = RwLock::new(ThreadControlBlock {
             cx: parent_tcb.cx.clone(),
             sigmask: parent_tcb.sigmask.clone(),
@@ -447,8 +426,8 @@ impl UserTask {
             signal_queue: [0; REAL_TIME_SIGNAL_NUM],
             exit_signal: 0,
             thread_exit_code: Option::None,
-            robust_list_head: 0, // 新线程不继承父线程的 robust list
-            robust_list_len: 0,  // 新线程不继承父线程的 robust list
+            robust_list_head: 0,            // 新线程不继承父线程的 robust list
+            robust_list_len: 0,             // 新线程不继承父线程的 robust list
         });
 
         tcb.write().cx[TrapFrameArgs::RET] = 0;
@@ -457,9 +436,9 @@ impl UserTask {
         let new_task = Arc::new(Self {
             page_table: self.page_table.clone(),
             task_id,
-            process_id: self.process_id, // 重要：保持相同的process_id
+            process_id: self.process_id,  // 重要：保持相同的process_id
             parent: RwLock::new(self.parent.read().clone()),
-            pcb: self.pcb.clone(), // 重要：共享PCB
+            pcb: self.pcb.clone(),       // 重要：共享PCB
             tcb,
         });
 
@@ -470,13 +449,9 @@ impl UserTask {
             pcb.threads.retain(|weak_ref| weak_ref.strong_count() > 0);
             // 添加新线程
             pcb.threads.push(Arc::downgrade(&new_task));
-
-            warn!(
-                "Thread created: task_id={}, process_id={}, total_active_threads={}",
-                new_task.task_id,
-                new_task.process_id,
-                pcb.threads.len()
-            );
+            
+            warn!("Thread created: task_id={}, process_id={}, total_active_threads={}", 
+                new_task.task_id, new_task.process_id, pcb.threads.len());
         }
 
         new_task
@@ -607,31 +582,35 @@ impl UserTask {
         );
         warn!("Total memory areas: {}", pcb.memset.len());
 
-        // 检查是否存在内存空隙
-        for i in 0..pcb.memset.len() {
-            if i + 1 < pcb.memset.len() {
-                let current = &pcb.memset[i];
-                let next = &pcb.memset[i + 1];
-                let gap_start = current.start + current.len;
-                let gap_end = next.start;
+        // 只在非 LoongArch 架构下进行内存空隙检查，避免干扰 LoongArch 系统调用
+        #[cfg(not(target_arch = "loongarch64"))]
+        {
+            // 检查是否存在内存空隙
+            for i in 0..pcb.memset.len() {
+                if i + 1 < pcb.memset.len() {
+                    let current = &pcb.memset[i];
+                    let next = &pcb.memset[i + 1];
+                    let gap_start = current.start + current.len;
+                    let gap_end = next.start;
 
-                if gap_end > gap_start && vaddr.raw() >= gap_start && vaddr.raw() < gap_end {
-                    warn!(
-                        "Address {:#x} falls in memory gap between areas {} and {}",
-                        vaddr.raw(),
-                        i,
-                        i + 1
-                    );
-                    warn!("Gap: {:#x} - {:#x}", gap_start, gap_end);
-
-                    // 尝试从前一个区域的文件中读取
-                    if let Some(file) = &current.file {
-                        let file_offset = current.offset + (vaddr.raw() - current.start);
+                    if gap_end > gap_start && vaddr.raw() >= gap_start && vaddr.raw() < gap_end {
                         warn!(
-                            "Attempting to use file from previous area with offset {:#x}",
-                            file_offset
+                            "Address {:#x} falls in memory gap between areas {} and {}",
+                            vaddr.raw(),
+                            i,
+                            i + 1
                         );
-                        return Some((file.clone(), file_offset, gap_end - gap_start));
+                        warn!("Gap: {:#x} - {:#x}", gap_start, gap_end);
+
+                        // 尝试从前一个区域的文件中读取
+                        if let Some(file) = &current.file {
+                            let file_offset = current.offset + (vaddr.raw() - current.start);
+                            warn!(
+                                "Attempting to use file from previous area with offset {:#x}",
+                                file_offset
+                            );
+                            return Some((file.clone(), file_offset, gap_end - gap_start));
+                        }
                     }
                 }
             }
@@ -687,18 +666,10 @@ impl AsyncTask for UserTask {
 
     #[inline]
     fn exit(&self, exit_code: usize) {
-        warn!(
-            "Process exit: task_id={}, process_id={}, exit_code={}, arch={}",
-            self.task_id,
-            self.process_id,
-            exit_code,
-            if cfg!(target_arch = "loongarch64") {
-                "loongarch64"
-            } else {
-                "other"
-            }
-        );
-
+        warn!("Process exit: task_id={}, process_id={}, exit_code={}, arch={}", 
+            self.task_id, self.process_id, exit_code, 
+            if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
+        
         let tcb_writer = self.tcb.write();
         let uaddr = tcb_writer.clear_child_tid;
         if uaddr != 0 {
@@ -712,16 +683,16 @@ impl AsyncTask for UserTask {
                 warn!("Failed to translate clear_child_tid address: {:#x}", uaddr);
             }
         }
-
+        
         let exit_signal = tcb_writer.exit_signal;
         drop(tcb_writer);
 
         // 改进的进程退出逻辑
         let should_cleanup_process = {
             let mut pcb = self.pcb.lock();
-
+            
             pcb.exit_code = Some(exit_code);
-
+            
             pcb.threads.retain(|weak_ref| {
                 if let Some(thread) = weak_ref.upgrade() {
                     thread.task_id != self.task_id
@@ -729,10 +700,10 @@ impl AsyncTask for UserTask {
                     false
                 }
             });
-
+            
             let remaining_threads = pcb.threads.len();
             let is_main_thread = self.task_id == self.process_id;
-
+            
             // 只有主线程退出且没有其他线程时才清理
             is_main_thread && remaining_threads == 0
         };
