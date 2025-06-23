@@ -302,6 +302,15 @@ impl UserTask {
         if should_cleanup_process {
             warn!("Thread exit triggering process cleanup for process_id={}", self.process_id);
             let mut pcb = self.pcb.lock();
+            
+            // 显式清理所有文件描述符，确保管道等资源被正确释放
+            for (fd, file_opt) in pcb.fd_table.0.iter_mut().enumerate() {
+                if let Some(file) = file_opt.take() {
+                    debug!("Cleaning up file descriptor {} during process exit", fd);
+                    // 文件对象将在此处被drop，触发相应的清理
+                }
+            }
+            
             pcb.memset.clear();
             pcb.fd_table.clear();
             pcb.children.clear();
@@ -709,8 +718,17 @@ impl AsyncTask for UserTask {
         };
 
         if should_cleanup_process {
-            //warn!("Cleaning up process resources for process_id={}", self.process_id);
+            warn!("Thread exit triggering process cleanup for process_id={}", self.process_id);
             let mut pcb = self.pcb.lock();
+            
+            // 显式清理所有文件描述符，确保管道等资源被正确释放
+            for (fd, file_opt) in pcb.fd_table.0.iter_mut().enumerate() {
+                if let Some(file) = file_opt.take() {
+                    debug!("Cleaning up file descriptor {} during process exit", fd);
+                    // 文件对象将在此处被drop，触发相应的清理
+                }
+            }
+            
             pcb.memset.clear();
             pcb.fd_table.clear();
             pcb.children.clear();

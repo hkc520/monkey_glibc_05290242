@@ -306,6 +306,18 @@ impl UserTaskContainer {
                 self.sys_shmctl(args[0] as _, args[1] as _, args[2] as _)
                     .await
             }
+            Sysno::semget => {
+                self.sys_semget(args[0] as _, args[1] as _, args[2] as _)
+                    .await
+            }
+            Sysno::semctl => {
+                self.sys_semctl(args[0] as _, args[1] as _, args[2] as _, args[3] as _)
+                    .await
+            }
+            Sysno::semop => {
+                self.sys_semop(args[0] as _, args[1].into(), args[2] as _)
+                    .await
+            }
             Sysno::setitimer => {
                 self.sys_setitimer(args[0] as _, args[1].into(), args[2].into())
                     .await

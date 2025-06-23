@@ -272,7 +272,7 @@ impl File {
         if self.flags.lock().contains(OpenFlags::O_NONBLOCK) {
             self.inner.readat(offset, buffer)
         } else {
-            WaitBlockingRead(self.inner.clone(), buffer, offset).await
+            WaitBlockingRead::new(self.inner.clone(), buffer, offset).await
         }
         .map(|x| {
             *self.offset.lock() += x;
@@ -286,7 +286,7 @@ impl File {
             return Ok(0);
         }
         let offset = *self.offset.lock();
-        WaitBlockingWrite(self.inner.clone(), &buffer, offset)
+        WaitBlockingWrite::new(self.inner.clone(), &buffer, offset)
             .await
             .map(|x| {
                 *self.offset.lock() += x;

@@ -157,241 +157,241 @@ async fn command(cmd: &str, work_dir: PathBuf) {
 pub async fn initproc() {
     #[cfg(not(target_arch = "loongarch64"))]
     {
-        set_libc_path("/glibc/lib".to_string());
-        set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
-        let glibc_home_dir = PathBuf::from("/glibc/basic");
-        // 为glibc环境创建链接
-        command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox cp /glibc/busybox /sleep",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox cp /glibc/busybox /bin/sleep",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
-        command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
-        //command("/musl/busybox sh", glibc_home_dir.clone()).await;
+        // set_libc_path("/glibc/lib".to_string());
+        // set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+        // let glibc_home_dir = PathBuf::from("/glibc/basic");
+        // // 为glibc环境创建链接
+        // command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
         // command(
-        //     "/glibc/busybox sh /glibc/iozone_testcode.sh",
+        //     "/glibc/busybox cp /glibc/busybox /sleep",
         //     glibc_home_dir.clone(),
         // )
         // .await;
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox sh /glibc/basic/run-all.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
-            glibc_home_dir.clone().clone(),
-        )
-        .await;
+        // command(
+        //     "/glibc/busybox cp /glibc/busybox /bin/sleep",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
+        // command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
+        // //command("/musl/busybox sh", glibc_home_dir.clone()).await;
+        // // command(
+        // //     "/glibc/busybox sh /glibc/iozone_testcode.sh",
+        // //     glibc_home_dir.clone(),
+        // // )
+        // // .await;
+        // command(
+        //     "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // command(
+        //     "/glibc/busybox sh /glibc/basic/run-all.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // command(
+        //     "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
+        //     glibc_home_dir.clone().clone(),
+        // )
+        // .await;
 
-        let glibc_home_dir = PathBuf::from("/glibc");
-        // 确保glibc目录也有正确的链接
-        command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox cp /glibc/busybox /sleep",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox cp /glibc/busybox /bin/sleep",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
-        command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox sh /glibc/libcbench_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox sh busybox_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+        // let glibc_home_dir = PathBuf::from("/glibc");
+        // // 确保glibc目录也有正确的链接
+        // command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
+        // command(
+        //     "/glibc/busybox cp /glibc/busybox /sleep",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // command(
+        //     "/glibc/busybox cp /glibc/busybox /bin/sleep",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
+        // command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
+        // command(
+        //     "/glibc/busybox sh /glibc/libcbench_testcode.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // command(
+        //     "/glibc/busybox sh busybox_testcode.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
 
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP START libctest-glibc ####",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        let glibc_exclude = vec![
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_robust_detach",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "setvbuf_unget",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_cancel_points",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_cancel",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_cond",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_tsd",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_cancel_sem_wait",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_cond_smasher",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_condattr_setclock",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_exit_cancel",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_once_deadlock",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-static.exe",
-                "pthread_rwlock_ebusy",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_robust_detach",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "setvbuf_unget",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_cancel_points",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_cancel",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_cond",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_tsd",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_cancel_sem_wait",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_cond_smasher",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_condattr_setclock",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_exit_cancel",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_once_deadlock",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "pthread_rwlock_ebusy",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "search_lsearch",
-                glibc_home_dir.clone(),
-            ),
-            (
-                "/glibc/runtest.exe",
-                "entry-dynamic.exe",
-                "sem_init",
-                glibc_home_dir.clone(),
-            ),
-        ];
-        run_glibc_tests(glibc_home_dir.clone(), glibc_exclude).await;
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP END libctest-glibc ####",
-            glibc_home_dir.clone().clone(),
-        )
-        .await;
+        // command(
+        //     "/glibc/busybox echo #### OS COMP TEST GROUP START libctest-glibc ####",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // let glibc_exclude = vec![
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_robust_detach",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "setvbuf_unget",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_cancel_points",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_cancel",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_cond",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_tsd",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_cancel_sem_wait",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_cond_smasher",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_condattr_setclock",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_exit_cancel",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_once_deadlock",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-static.exe",
+        //         "pthread_rwlock_ebusy",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_robust_detach",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "setvbuf_unget",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_cancel_points",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_cancel",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_cond",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_tsd",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_cancel_sem_wait",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_cond_smasher",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_condattr_setclock",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_exit_cancel",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_once_deadlock",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "pthread_rwlock_ebusy",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "search_lsearch",
+        //         glibc_home_dir.clone(),
+        //     ),
+        //     (
+        //         "/glibc/runtest.exe",
+        //         "entry-dynamic.exe",
+        //         "sem_init",
+        //         glibc_home_dir.clone(),
+        //     ),
+        // ];
+        // run_glibc_tests(glibc_home_dir.clone(), glibc_exclude).await;
+        // command(
+        //     "/glibc/busybox echo #### OS COMP TEST GROUP END libctest-glibc ####",
+        //     glibc_home_dir.clone().clone(),
+        // )
+        // .await;
 
         set_libc_path("/musl/lib/libc.so".to_string());
         set_dyn_path("/musl/lib/libc.so".to_string());
@@ -432,6 +432,8 @@ pub async fn initproc() {
         )
         .await;
         let home_dir = PathBuf::from("/musl");
+        command("/musl/busybox sh", home_dir.clone()).await;
+        command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
         command(
             "/musl/busybox sh /musl/iozone_testcode.sh",
             home_dir.clone(),
