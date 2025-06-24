@@ -242,13 +242,65 @@ impl UserTask {
     }
 
     pub fn sbrk(&self, addr: usize) -> usize {
-        let curr_page = self.pcb.lock().heap.div_ceil(PAGE_SIZE);
+        let mut pcb = self.pcb.lock();
+        let curr_heap = pcb.heap;
+        let curr_page = curr_heap.div_ceil(PAGE_SIZE);
         let after_page = addr.div_ceil(PAGE_SIZE);
-        // 如果需要申请内存
-        (curr_page..after_page).for_each(|i| {
-            self.frame_alloc(va!(i * PAGE_SIZE), MemType::CodeSection, 1);
-        });
-        self.pcb.lock().heap = addr;
+        
+        // 如果需要申请新页面
+        if after_page > curr_page {
+            let pages_needed = after_page - curr_page;
+            
+            // 查找现有的堆内存区域（Mmap类型，且地址连续）
+            let heap_area_index = pcb.memset.iter().enumerate()
+                .find(|(_, area)| {
+                    area.mtype == MemType::Mmap && 
+                    area.start + area.len == curr_page * PAGE_SIZE
+                })
+                .map(|(i, _)| i);
+            
+            // 分配新的页面
+            if let Some(trackers) = frame_alloc_much(pages_needed) {
+                let new_trackers: Vec<_> = trackers
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, tracker)| {
+                        let vaddr = va!(curr_page * PAGE_SIZE + i * PAGE_SIZE);
+                        // 映射页面
+                        self.map(tracker.0, vaddr, MappingFlags::URWX);
+                        MapTrack {
+                            vaddr,
+                            tracker: Arc::new(tracker),
+                            rwx: 0,
+                        }
+                    })
+                    .collect();
+                
+                if let Some(area_index) = heap_area_index {
+                    // 扩展现有堆区域
+                    let area = &mut pcb.memset[area_index];
+                    area.mtrackers.extend(new_trackers);
+                    area.len += pages_needed * PAGE_SIZE;
+                } else {
+                    // 创建新的堆区域
+                    pcb.memset.push(MemArea {
+                        mtype: MemType::Mmap,
+                        mtrackers: new_trackers,
+                        file: None,
+                        offset: 0,
+                        start: curr_page * PAGE_SIZE,
+                        len: pages_needed * PAGE_SIZE,
+                    });
+                }
+            } else {
+                // 内存分配失败
+                drop(pcb);
+                return curr_heap;
+            }
+        }
+        
+        pcb.heap = addr;
+        drop(pcb);
         addr
     }
 

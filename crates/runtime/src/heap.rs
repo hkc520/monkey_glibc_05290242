@@ -17,6 +17,17 @@ static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap<30> = LockedHeap::empty();
 
+/// 获取堆使用统计信息
+/// 返回 (总大小, 已分配字节数, 分配计数)
+pub fn heap_stats() -> (usize, usize, usize) {
+    let heap = HEAP_ALLOCATOR.lock();
+    let total_bytes = heap.stats_total_bytes();
+    let allocated_bytes = heap.stats_alloc_actual();
+    // buddy_system_allocator不提供分配计数，我们可以用已分配字节数除以平均分配大小来估算
+    let allocation_count = if allocated_bytes > 0 { allocated_bytes / 64 } else { 0 }; // 假设平均分配64字节
+    (total_bytes, allocated_bytes, allocation_count)
+}
+
 /// 初始化堆内存分配器
 pub fn init() {
     unsafe {

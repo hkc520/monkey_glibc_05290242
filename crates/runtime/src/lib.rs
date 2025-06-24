@@ -4,7 +4,7 @@
 extern crate alloc;
 
 pub mod frame;
-mod heap;
+pub mod heap;
 
 pub fn init() {
     heap::init();

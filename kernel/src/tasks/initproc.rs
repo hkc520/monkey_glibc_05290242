@@ -211,6 +211,7 @@ pub async fn initproc() {
         // .await;
         // command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
         // command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
+        // command("/glibc/busybox sh lmbench_testcode.sh", glibc_home_dir.clone()).await;
         // command(
         //     "/glibc/busybox sh /glibc/libcbench_testcode.sh",
         //     glibc_home_dir.clone(),
@@ -432,7 +433,7 @@ pub async fn initproc() {
         )
         .await;
         let home_dir = PathBuf::from("/musl");
-        command("/musl/busybox sh", home_dir.clone()).await;
+        //command("/musl/busybox sh", home_dir.clone()).await;
         command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
         command(
             "/musl/busybox sh /musl/iozone_testcode.sh",
@@ -505,6 +506,7 @@ pub async fn initproc() {
         .await;
         //let home_dir = PathBuf::from("/musl");
         let home_dir = PathBuf::from("/musl");
+        command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
         command(
             "/musl/busybox sh /musl/iozone_testcode.sh",
             home_dir.clone(),
@@ -732,6 +734,7 @@ pub async fn initproc() {
         .await;
         command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
         command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
+        command("/glibc/busybox sh lmbench_testcode.sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox sh libcbench_testcode.sh",
             glibc_home_dir.clone(),
