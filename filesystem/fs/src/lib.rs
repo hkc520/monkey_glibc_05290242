@@ -85,19 +85,40 @@ pub fn init() {
     }
 }
 
-pub struct WaitBlockingRead<'a>(pub Arc<dyn INodeInterface>, pub &'a mut [u8], pub usize);
+pub struct WaitBlockingRead<'a>(pub Arc<dyn INodeInterface>, pub &'a mut [u8], pub usize, pub u32);
+
+impl<'a> WaitBlockingRead<'a> {
+    pub fn new(file: Arc<dyn INodeInterface>, buffer: &'a mut [u8], offset: usize) -> Self {
+        Self(file, buffer, offset, 0)
+    }
+}
 
 impl<'a> Future for WaitBlockingRead<'a> {
     type Output = VfsResult<usize>;
 
-    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let offset = self.2;
         let file = self.0.clone();
         let buffer = &mut self.1;
+        
         match file.readat(offset, *buffer) {
-            Ok(rsize) => Poll::Ready(Ok(rsize)),
+            Ok(rsize) => {
+                // 成功读取数据（包括0字节的EOF情况）
+                Poll::Ready(Ok(rsize))
+            },
             Err(err) => {
                 if let Errno::EWOULDBLOCK = err {
+                    // 管道为空，需要等待其他进程写入数据
+                    self.3 += 1;
+                    
+                    // 立即yield，让其他任务有机会运行
+                    cx.waker().wake_by_ref();
+                    
+                    // 对于调试，每10000次重试输出一次日志
+                    if self.3 % 10000 == 0 {
+                        log::debug!("pipe read still waiting (retry {})", self.3);
+                    }
+                    
                     Poll::Pending
                 } else {
                     Poll::Ready(Err(err))
@@ -107,12 +128,18 @@ impl<'a> Future for WaitBlockingRead<'a> {
     }
 }
 
-pub struct WaitBlockingWrite<'a>(pub Arc<dyn INodeInterface>, pub &'a [u8], pub usize);
+pub struct WaitBlockingWrite<'a>(pub Arc<dyn INodeInterface>, pub &'a [u8], pub usize, pub u32);
+
+impl<'a> WaitBlockingWrite<'a> {
+    pub fn new(file: Arc<dyn INodeInterface>, buffer: &'a [u8], offset: usize) -> Self {
+        Self(file, buffer, offset, 0)
+    }
+}
 
 impl<'a> Future for WaitBlockingWrite<'a> {
     type Output = VfsResult<usize>;
 
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let offset = self.2;
         let file = self.0.clone();
         let buffer = &self.1;
@@ -121,6 +148,17 @@ impl<'a> Future for WaitBlockingWrite<'a> {
             Ok(wsize) => Poll::Ready(Ok(wsize)),
             Err(err) => {
                 if let Errno::EWOULDBLOCK = err {
+                    // 管道缓冲区满，需要等待其他进程读取数据
+                    self.3 += 1;
+                    
+                    // 立即yield，让其他任务有机会运行
+                    cx.waker().wake_by_ref();
+                    
+                    // 对于调试，每10000次重试输出一次日志
+                    if self.3 % 10000 == 0 {
+                        log::debug!("pipe write still waiting (retry {})", self.3);
+                    }
+                    
                     Poll::Pending
                 } else {
                     Poll::Ready(Err(err))

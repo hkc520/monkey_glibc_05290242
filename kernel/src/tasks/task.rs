@@ -155,11 +155,56 @@ impl UserTask {
         // 根据内存类型选择合适的权限
         let mapping_flags = match mtype {
             MemType::Stack => MappingFlags::URWX,      // 栈需要读写执行权限
-            MemType::CodeSection => MappingFlags::URWX, // 代码段默认读写执行（后续会根据ELF flags调整）
+            MemType::CodeSection => MappingFlags::URWX, // 代码段默认读写执行（向后兼容，现已使用Mmap）
             MemType::Mmap => MappingFlags::URWX,       // mmap区域默认读写执行
             MemType::Shared => MappingFlags::URWX,     // 共享内存读写执行
             MemType::ShareFile => MappingFlags::URW,   // 共享文件读写
         };
+        
+        // 根据修复记忆，为MemType::Mmap的批量分配添加特殊策略
+        if mtype == MemType::Mmap && count > 1 {
+            // 对于批量MemType::Mmap分配，使用frame_alloc_much确保连续分配
+            if let Some(trackers) = frame_alloc_much(count) {
+                let ppn = trackers[0].0;
+                // 手动构建连续的MapTrack
+                let map_trackers: Vec<_> = trackers
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, x)| {
+                        let vaddr_i = match vaddr.raw() == 0 {
+                            true => vaddr,
+                            false => va!(vaddr.raw() + i * PAGE_SIZE),
+                        };
+                        MapTrack {
+                            vaddr: vaddr_i,
+                            tracker: Arc::new(x),
+                            rwx: 0,
+                        }
+                    })
+                    .collect();
+                
+                // 映射到页表
+                if vaddr.raw() != 0 {
+                    map_trackers
+                        .iter()
+                        .filter(|x| x.vaddr.raw() != 0)
+                        .for_each(|x| self.map(x.tracker.0, x.vaddr, mapping_flags));
+                }
+                
+                // 添加到内存集合
+                let mut inner = self.pcb.lock();
+                inner.memset.push(MemArea {
+                    mtype,
+                    mtrackers: map_trackers,
+                    file: None,
+                    offset: 0,
+                    start: vaddr.raw(),
+                    len: count * PAGE_SIZE,
+                });
+                return Some(ppn);
+            }
+        }
+        
         self.map_frames(vaddr, mtype, count, None, 0, vaddr.raw(), count * PAGE_SIZE, mapping_flags)
     }
 
@@ -244,9 +289,9 @@ impl UserTask {
     pub fn sbrk(&self, addr: usize) -> usize {
         let curr_page = self.pcb.lock().heap.div_ceil(PAGE_SIZE);
         let after_page = addr.div_ceil(PAGE_SIZE);
-        // 如果需要申请内存
+        // 如果需要申请内存，使用正确的MemType::Mmap而非CodeSection
         (curr_page..after_page).for_each(|i| {
-            self.frame_alloc(va!(i * PAGE_SIZE), MemType::CodeSection, 1);
+            self.frame_alloc(va!(i * PAGE_SIZE), MemType::Mmap, 1);
         });
         self.pcb.lock().heap = addr;
         addr
@@ -373,7 +418,7 @@ impl UserTask {
 
                         // 创建一个新的内存区域来填补空隙
                         let gap_area = MemArea {
-                            mtype: MemType::CodeSection,
+                            mtype: MemType::Mmap,
                             mtrackers: Vec::new(),
                             file: area.file.clone(), // 使用相同的文件引用
                             offset: area.offset + area.len,

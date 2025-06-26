@@ -8,6 +8,7 @@ use signal::SignalFlags;
 use crate::syscall::types::signal::SignalUserContext;
 use crate::tasks::{current_user_task, UserTaskControlFlow};
 use crate::utils::useref::UserRef;
+use polyhal::VirtAddr;
 
 use super::UserTaskContainer;
 
@@ -91,9 +92,9 @@ if signal == SignalFlags::SIGSEGV {
             pcb.memset.iter().any(|area| {
                 let in_area = area.contains(sigaction.handler);
                 let is_executable = matches!(area.mtype, 
-                    crate::tasks::MemType::CodeSection | 
+                    crate::tasks::MemType::Mmap |  // 现在统一使用Mmap，包括代码段
                     crate::tasks::MemType::Stack |
-                    crate::tasks::MemType::Mmap  // 某些动态库可能在mmap区域
+                    crate::tasks::MemType::CodeSection  // 保持向后兼容
                 );
                 
                 if in_area {
@@ -146,7 +147,46 @@ if signal == SignalFlags::SIGSEGV {
             return;
         }
 
-        let cx: &mut SignalUserContext = UserRef::<SignalUserContext>::from(sp).get_mut();
+        // 验证栈指针是否在有效的内存区域内
+        let sp_valid = {
+            let pcb = self.task.pcb.lock();
+            pcb.memset.iter().any(|area| {
+                let in_area = area.contains(sp) && area.contains(sp + size_of::<SignalUserContext>());
+                let is_stack = matches!(area.mtype, 
+                    crate::tasks::MemType::Stack | 
+                    crate::tasks::MemType::Mmap
+                );
+                in_area && is_stack
+            })
+        };
+
+        if !sp_valid {
+            warn!("Signal stack pointer {:#x} is not in valid memory area for task {}", 
+                sp, self.task.get_task_id());
+            return;
+        }
+
+        // 直接访问SignalUserContext，但增强错误处理
+        let cx: &mut SignalUserContext = {
+            // 首先检查内存页是否可访问
+            if let None = self.task.page_table.translate(VirtAddr::from(sp)) {
+                warn!("Signal stack page at {:#x} is not mapped for task {}", 
+                    sp, self.task.get_task_id());
+                // 输出当前内存布局以便调试
+                let pcb = self.task.pcb.lock();
+                warn!("Current memory areas for task {}:", self.task.get_task_id());
+                for (i, area) in pcb.memset.iter().enumerate() {
+                    warn!("  Area {}: {:#x}-{:#x} (type: {:?})", 
+                        i, area.start, area.start + area.len, area.mtype);
+                }
+                return;
+            }
+            
+            // 添加内存屏障确保之前的内存操作完成
+            core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+            
+            UserRef::<SignalUserContext>::from(sp).get_mut()
+        };
         // change task context to do the signal.
         let mut tcb = self.task.tcb.write();
         cx.store_ctx(&cx_ref);
@@ -196,6 +236,16 @@ if signal == SignalFlags::SIGSEGV {
         // restore sigmask to the mask before doing the signal.
         self.task.tcb.write().sigmask = task_mask;
         *cx_ref = store_cx;
+        
+        // 在访问SignalUserContext前再次验证内存可访问性
+        if let None = self.task.page_table.translate(VirtAddr::from(sp)) {
+            warn!("Signal context page at {:#x} is no longer mapped for task {}, skipping context restore", 
+                sp, self.task.get_task_id());
+            // 不尝试从信号上下文恢复，直接使用存储的上下文
+            info!("Signal handling completed for task {}, returning to stored PC: {:#x}", 
+                  self.task.get_task_id(), cx_ref[TrapFrameArgs::SEPC]);
+            return;
+        }
         
         // 添加安全检查，防止无效的PC值
         let new_pc = cx.pc();

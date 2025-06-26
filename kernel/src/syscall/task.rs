@@ -523,7 +523,42 @@ impl UserTaskContainer {
     }
 
     pub async fn sys_sigreturn(&self) -> SysResult {
-        debug!("sys_sigreturn @ ");
+        debug!("sys_sigreturn @ task_id: {}", self.tid);
+        
+        // 获取当前栈指针，它应该指向SignalUserContext
+        let cx_ref = self.task.force_cx_ref();
+        let sp = cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SP];
+        
+        debug!("sys_sigreturn: restoring context from sp: {:#x}", sp);
+        
+        // 验证栈指针的有效性
+        if sp < 0x2_0000_0000 || sp >= 0x8000_0000_0000 {
+            warn!("Invalid signal context stack pointer: {:#x}", sp);
+            return Err(Errno::EFAULT);
+        }
+        
+        use crate::utils::useref::UserRef;
+        use crate::syscall::types::signal::SignalUserContext;
+        
+        // 从栈中获取保存的信号上下文
+        let signal_ctx: &SignalUserContext = UserRef::<SignalUserContext>::from(sp).get_ref();
+        
+        // 恢复信号掩码
+        self.task.tcb.write().sigmask = signal_ctx.sig_mask;
+        
+        // 恢复寄存器上下文
+        signal_ctx.restore_ctx(cx_ref);
+        
+        // 恢复PC
+        cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SEPC] = signal_ctx.pc();
+        
+        // 恢复栈指针到信号处理前的位置
+        // SignalUserContext + 对齐空间
+        cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SP] = sp + core::mem::size_of::<SignalUserContext>() + 128;
+        
+        debug!("sys_sigreturn: restored PC to {:#x}, SP to {:#x}", 
+               signal_ctx.pc(), cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SP]);
+        
         Ok(0)
     }
 
