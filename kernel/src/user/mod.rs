@@ -194,7 +194,7 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
 
                 // 分配页面
                 let page_count = 1;
-                if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count)
+                if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, page_count)
                 {
                     let page_data = ppn.slice_mut_with_len(PAGE_SIZE);
 
@@ -212,13 +212,13 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
 
             // 如果无法从ELF加载，则使用原有的空白页面分配逻辑
             let page_count = 1;
-            if let Some(_) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count) {
+            if let Some(_) = task.frame_alloc(vaddr.floor(), MemType::Mmap, page_count) {
                 return;
             }
         }
         // 处理堆区域扩展
         else if vaddr.raw() >= 0x1000000 && vaddr.raw() < 0x2000000 {
-            let heap_page_count = 1;
+            let heap_page_count = 12; // 增加到12个页面（48KB），为文件系统测试提供更多内存
             if let Some(_) = task.frame_alloc(vaddr.floor(), MemType::Mmap, heap_page_count) {
                 return;
             }
@@ -305,7 +305,7 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                 }
 
                 let page_count = 1;
-                if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count)
+                if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, page_count)
                 {
                     let page_data = ppn.slice_mut_with_len(PAGE_SIZE);
 
@@ -362,7 +362,7 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
                 vaddr.raw()
             );
             let page_count = 1;
-            if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::CodeSection, page_count) {
+            if let Some(ppn) = task.frame_alloc(vaddr.floor(), MemType::Mmap, page_count) {
                 warn!("Successfully allocated blank CodeSection for gap region vaddr: {:#x}, ppn: {:#x}",   
             vaddr.raw(), ppn.raw());
 

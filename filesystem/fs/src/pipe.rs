@@ -8,7 +8,7 @@ use sync::Mutex;
 use syscalls::Errno;
 use vfscore::{INodeInterface, PollEvent, StatMode, VfsResult};
 
-// 管道缓冲区大小限制
+// 管道缓冲区大小限制，适中的大小既能处理lmbench又不会影响其他测试
 const PIPE_BUFFER_SIZE: usize = 0x10000; // 64KB
 
 // pipe sender, just can write.

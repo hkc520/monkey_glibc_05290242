@@ -3,11 +3,9 @@
 #![feature(extract_if)]
 #![feature(async_closure)]
 #![feature(let_chains)]
-#![feature(alloc_error_handler)]
 
 // include modules drivers
 // mod drivers;
-use executor::AsyncTask;
 include!(concat!(env!("OUT_DIR"), "/drivers.rs"));
 
 #[macro_use]
@@ -69,93 +67,6 @@ impl PageAlloc for PageAllocImpl {
             paddr.clear_len(PAGE_SIZE);
         }
     }
-}
-
-/// 内存分配错误处理器
-#[alloc_error_handler]
-fn alloc_error_handler(layout: core::alloc::Layout) -> ! {
-    error!("Memory allocation failed!");
-    error!("Requested size: {} bytes, align: {}", layout.size(), layout.align());
-    
-    // 显示堆使用统计信息
-    let (heap_total, heap_allocated, alloc_count) = runtime::heap::heap_stats();
-    error!("Heap statistics:");
-    error!("  Total heap size: {} bytes ({} MB)", heap_total, heap_total / 1024 / 1024);
-    error!("  Allocated bytes: {} bytes ({} MB)", heap_allocated, heap_allocated / 1024 / 1024);
-    error!("  Allocation count: {} (estimated)", alloc_count);
-    error!("  Free bytes: {} bytes ({} MB)", 
-           heap_total - heap_allocated, (heap_total - heap_allocated) / 1024 / 1024);
-    error!("  Allocation utilization: {:.1}%", if heap_total > 0 { (heap_allocated as f64 / heap_total as f64) * 100.0 } else { 0.0 });
-    
-    // 尝试获取一些内存使用统计信息
-    if let Some(current_task) = current_task().downcast_arc::<UserTask>().ok() {
-        error!("Current task: {} (process_id: {})", current_task.get_task_id(), current_task.process_id);
-        
-        let pcb = current_task.pcb.lock();
-        error!("Task memory areas: {}", pcb.memset.len());
-        
-        // 检查是否有异常多的内存区域
-        if pcb.memset.len() > 100 {
-            error!("WARNING: Excessive memory areas detected! This indicates a serious memory leak.");
-            
-            // 统计不同类型的内存区域
-            let mut stack_count = 0;
-            let mut heap_count = 0;
-            let mut code_count = 0;
-            let mut mmap_count = 0;
-            let mut other_count = 0;
-            
-            for area in pcb.memset.iter() {
-                match area.mtype {
-                    crate::tasks::MemType::Stack => stack_count += 1,
-                    crate::tasks::MemType::CodeSection => code_count += 1,
-                    crate::tasks::MemType::Mmap => mmap_count += 1, // Mmap现在包含堆内存和其他映射
-                    crate::tasks::MemType::Shared => heap_count += 1, // 共享内存
-                    crate::tasks::MemType::ShareFile => other_count += 1,
-                }
-            }
-            
-            error!("Memory area breakdown: Stack={}, Shared={}, Code={}, Mmap={}, ShareFile={}", 
-                   stack_count, heap_count, code_count, mmap_count, other_count);
-                   
-            // 如果有过多的代码区域，这表明sbrk实现有问题
-            if code_count > 50 {
-                error!("CRITICAL: Too many code sections ({}), this suggests sbrk is using wrong MemType!", code_count);
-            }
-            // 如果有过多的Mmap区域，这可能是内存映射泄漏
-            if mmap_count > 400 {
-                error!("CRITICAL: Too many mmap areas ({}), this suggests a memory mapping leak!", mmap_count);
-            }
-        }
-        
-        let mut total_memory = 0;
-        for (i, area) in pcb.memset.iter().enumerate() {
-            total_memory += area.len;
-            if i < 10 {  // 只显示前10个区域
-                error!("  Area {}: start={:#x}, len={:#x}, type={:?}", 
-                       i, area.start, area.len, area.mtype);
-            }
-        }
-        error!("Total task memory: {} bytes ({} MB)", total_memory, total_memory / 1024 / 1024);
-        
-        // 统计实际使用的文件描述符
-        let mut used_fds = 0;
-        for fd_opt in pcb.fd_table.0.iter() {
-            if fd_opt.is_some() {
-                used_fds += 1;
-            }
-        }
-        error!("Task file descriptors: used={}, total_slots={}", used_fds, pcb.fd_table.0.len());
-        
-        drop(pcb);
-        
-        // 尝试紧急退出当前任务而不是panic整个系统
-        error!("Attempting emergency task termination to prevent system crash");
-        current_task.exit(1);
-        // 如果退出失败，才panic
-    }
-    
-    panic!("Out of memory: failed to allocate {} bytes", layout.size());
 }
 
 #[export_name = "_interrupt_for_arch"]

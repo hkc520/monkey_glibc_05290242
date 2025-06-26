@@ -155,11 +155,56 @@ impl UserTask {
         // 根据内存类型选择合适的权限
         let mapping_flags = match mtype {
             MemType::Stack => MappingFlags::URWX,      // 栈需要读写执行权限
-            MemType::CodeSection => MappingFlags::URWX, // 代码段默认读写执行（后续会根据ELF flags调整）
+            MemType::CodeSection => MappingFlags::URWX, // 代码段默认读写执行（向后兼容，现已使用Mmap）
             MemType::Mmap => MappingFlags::URWX,       // mmap区域默认读写执行
             MemType::Shared => MappingFlags::URWX,     // 共享内存读写执行
             MemType::ShareFile => MappingFlags::URW,   // 共享文件读写
         };
+        
+        // 根据修复记忆，为MemType::Mmap的批量分配添加特殊策略
+        if mtype == MemType::Mmap && count > 1 {
+            // 对于批量MemType::Mmap分配，使用frame_alloc_much确保连续分配
+            if let Some(trackers) = frame_alloc_much(count) {
+                let ppn = trackers[0].0;
+                // 手动构建连续的MapTrack
+                let map_trackers: Vec<_> = trackers
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, x)| {
+                        let vaddr_i = match vaddr.raw() == 0 {
+                            true => vaddr,
+                            false => va!(vaddr.raw() + i * PAGE_SIZE),
+                        };
+                        MapTrack {
+                            vaddr: vaddr_i,
+                            tracker: Arc::new(x),
+                            rwx: 0,
+                        }
+                    })
+                    .collect();
+                
+                // 映射到页表
+                if vaddr.raw() != 0 {
+                    map_trackers
+                        .iter()
+                        .filter(|x| x.vaddr.raw() != 0)
+                        .for_each(|x| self.map(x.tracker.0, x.vaddr, mapping_flags));
+                }
+                
+                // 添加到内存集合
+                let mut inner = self.pcb.lock();
+                inner.memset.push(MemArea {
+                    mtype,
+                    mtrackers: map_trackers,
+                    file: None,
+                    offset: 0,
+                    start: vaddr.raw(),
+                    len: count * PAGE_SIZE,
+                });
+                return Some(ppn);
+            }
+        }
+        
         self.map_frames(vaddr, mtype, count, None, 0, vaddr.raw(), count * PAGE_SIZE, mapping_flags)
     }
 
@@ -242,65 +287,13 @@ impl UserTask {
     }
 
     pub fn sbrk(&self, addr: usize) -> usize {
-        let mut pcb = self.pcb.lock();
-        let curr_heap = pcb.heap;
-        let curr_page = curr_heap.div_ceil(PAGE_SIZE);
+        let curr_page = self.pcb.lock().heap.div_ceil(PAGE_SIZE);
         let after_page = addr.div_ceil(PAGE_SIZE);
-        
-        // 如果需要申请新页面
-        if after_page > curr_page {
-            let pages_needed = after_page - curr_page;
-            
-            // 查找现有的堆内存区域（Mmap类型，且地址连续）
-            let heap_area_index = pcb.memset.iter().enumerate()
-                .find(|(_, area)| {
-                    area.mtype == MemType::Mmap && 
-                    area.start + area.len == curr_page * PAGE_SIZE
-                })
-                .map(|(i, _)| i);
-            
-            // 分配新的页面
-            if let Some(trackers) = frame_alloc_much(pages_needed) {
-                let new_trackers: Vec<_> = trackers
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, tracker)| {
-                        let vaddr = va!(curr_page * PAGE_SIZE + i * PAGE_SIZE);
-                        // 映射页面
-                        self.map(tracker.0, vaddr, MappingFlags::URWX);
-                        MapTrack {
-                            vaddr,
-                            tracker: Arc::new(tracker),
-                            rwx: 0,
-                        }
-                    })
-                    .collect();
-                
-                if let Some(area_index) = heap_area_index {
-                    // 扩展现有堆区域
-                    let area = &mut pcb.memset[area_index];
-                    area.mtrackers.extend(new_trackers);
-                    area.len += pages_needed * PAGE_SIZE;
-                } else {
-                    // 创建新的堆区域
-                    pcb.memset.push(MemArea {
-                        mtype: MemType::Mmap,
-                        mtrackers: new_trackers,
-                        file: None,
-                        offset: 0,
-                        start: curr_page * PAGE_SIZE,
-                        len: pages_needed * PAGE_SIZE,
-                    });
-                }
-            } else {
-                // 内存分配失败
-                drop(pcb);
-                return curr_heap;
-            }
-        }
-        
-        pcb.heap = addr;
-        drop(pcb);
+        // 如果需要申请内存，使用正确的MemType::Mmap而非CodeSection
+        (curr_page..after_page).for_each(|i| {
+            self.frame_alloc(va!(i * PAGE_SIZE), MemType::Mmap, 1);
+        });
+        self.pcb.lock().heap = addr;
         addr
     }
 
@@ -354,15 +347,6 @@ impl UserTask {
         if should_cleanup_process {
             warn!("Thread exit triggering process cleanup for process_id={}", self.process_id);
             let mut pcb = self.pcb.lock();
-            
-            // 显式清理所有文件描述符，确保管道等资源被正确释放
-            for (fd, file_opt) in pcb.fd_table.0.iter_mut().enumerate() {
-                if let Some(file) = file_opt.take() {
-                    debug!("Cleaning up file descriptor {} during process exit", fd);
-                    // 文件对象将在此处被drop，触发相应的清理
-                }
-            }
-            
             pcb.memset.clear();
             pcb.fd_table.clear();
             pcb.children.clear();
@@ -434,7 +418,7 @@ impl UserTask {
 
                         // 创建一个新的内存区域来填补空隙
                         let gap_area = MemArea {
-                            mtype: MemType::CodeSection,
+                            mtype: MemType::Mmap,
                             mtrackers: Vec::new(),
                             file: area.file.clone(), // 使用相同的文件引用
                             offset: area.offset + area.len,
@@ -770,17 +754,8 @@ impl AsyncTask for UserTask {
         };
 
         if should_cleanup_process {
-            warn!("Thread exit triggering process cleanup for process_id={}", self.process_id);
+            //warn!("Cleaning up process resources for process_id={}", self.process_id);
             let mut pcb = self.pcb.lock();
-            
-            // 显式清理所有文件描述符，确保管道等资源被正确释放
-            for (fd, file_opt) in pcb.fd_table.0.iter_mut().enumerate() {
-                if let Some(file) = file_opt.take() {
-                    debug!("Cleaning up file descriptor {} during process exit", fd);
-                    // 文件对象将在此处被drop，触发相应的清理
-                }
-            }
-            
             pcb.memset.clear();
             pcb.fd_table.clear();
             pcb.children.clear();

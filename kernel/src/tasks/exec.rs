@@ -122,7 +122,7 @@ pub fn cache_task_template(path: PathBuf) -> Result<(), Errno> {
                 ppn_space.copy_from_slice(&buffer[offset..offset + file_size]);
 
                 maps.push(MemArea {
-                    mtype: MemType::CodeSection,
+                    mtype: MemType::Mmap,
                     mtrackers: pages
                         .into_iter()
                         .enumerate()
@@ -163,7 +163,30 @@ pub async fn exec_with_process(
     let path = curr_dir.join(&path);
 
     let user_task = task.clone();
-    user_task.pcb.lock().memset.clear();
+    
+    // 修复：在清空内存集合之前先恢复到干净的页表状态
+    // 这避免了页表指向已经清空的内存区域，防止riscv架构下的内核页错误
+    
+    // 第一步：获取并保存当前页表的干净状态
+    let clean_page_table = user_task.page_table.clone();
+    
+    // 第二步：同步确保所有之前的内存访问都完成
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+    
+    // 第三步：清理内存集合，但保持页表完整性
+    {
+        let mut pcb = user_task.pcb.lock();
+        // 在清空之前，确保每个内存区域都正确取消映射
+        for area in pcb.memset.iter() {
+            // 逐页取消映射以避免突然的映射失效
+            for tracker in area.mtrackers.iter() {
+                user_task.page_table.unmap_page(tracker.vaddr);
+            }
+        }
+        pcb.memset.clear();
+    }
+    
+    // 第四步：恢复页表并应用更改
     user_task.page_table.restore();
     user_task.page_table.change();
 
@@ -281,20 +304,9 @@ pub async fn exec_with_process(
                 let virt_addr = base + ph.virtual_addr() as usize;
                 let vpn = virt_addr / PAGE_SIZE;
 
-                // // 确保创建对应的内存区域，包含文件信息
-                // let area = MemArea {
-                //     start: virt_addr,
-                //     len: mem_size,
-                //     offset: offset,
-                //     file: Some(file.get_bare_file()), // 关键：保存文件引用
-                //     mtype: MemType::CodeSection,
-                //     mtrackers: Vec::new(),
-                // };
-                // user_task.pcb.lock().memset.push(area);
-
                 let page_count = (virt_addr + mem_size).div_ceil(PAGE_SIZE) - vpn;
                 let ppn_start =
-                    user_task.frame_alloc(va!(virt_addr).floor(), MemType::CodeSection, page_count);
+                    user_task.frame_alloc(va!(virt_addr).floor(), MemType::Mmap, page_count);
                 let page_space = va!(virt_addr).slice_mut_with_len(file_size);
                 let ppn_space = ppn_start
                     .expect("not have enough memory")

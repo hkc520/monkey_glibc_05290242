@@ -17,7 +17,7 @@ use fs::{
     pipe::create_pipe, OpenFlags, PollEvent, PollFd, SeekFrom, Stat, StatFS, StatMode, TimeSpec,
     UTIME_NOW,
 };
-use log::{debug, warn};
+use log::debug;
 use num_traits::FromPrimitive;
 use polyhal::VirtAddr;
 use syscalls::Errno;
@@ -192,32 +192,6 @@ impl UserTaskContainer {
             "sys_openat @ fd: {}, filename: {}, flags: {:?}, mode: {}",
             dir_fd as isize, filename, flags, mode
         );
-        
-        // 检查文件描述符使用情况，防止泄漏导致系统崩溃
-        let current_fd_count = {
-            let pcb = self.task.pcb.lock();
-            pcb.fd_table.0.iter().filter(|fd| fd.is_some()).count()
-        };
-        
-        if current_fd_count > 200 {
-                         warn!("High file descriptor usage detected: {}/255, forcing cleanup", current_fd_count);
-            
-            // 强制清理一些非标准文件描述符（保留0,1,2）
-            let mut pcb = self.task.pcb.lock();
-            let mut cleaned = 0;
-            for i in 3..pcb.fd_table.0.len() {
-                if pcb.fd_table.0[i].is_some() && cleaned < 50 {
-                    pcb.fd_table.0[i] = None;
-                    cleaned += 1;
-                }
-            }
-            drop(pcb);
-            
-            if cleaned > 0 {
-                warn!("Emergency cleanup: closed {} file descriptors", cleaned);
-            }
-        }
-        
         // let dir = to_node(&self.task, fd, filename)?;
         // let file = dir.dentry_open(filename, flags)?;
         let file = self.task.fd_open(dir_fd, filename, flags)?;

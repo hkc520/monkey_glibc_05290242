@@ -62,6 +62,7 @@ impl UserTaskContainer {
             "sys_shmat @ shmid: {}, shmaddr: {}, shmflg: {:#o}",
             shmid, shmaddr, shmflg
         );
+
         let vaddr = self.task.get_last_free_addr();
 
         let vaddr = if shmaddr == 0 {
@@ -86,7 +87,7 @@ impl UserTaskContainer {
             .for_each(|(i, x)| {
                 debug!("map {:?} @ {:?}", vaddr.raw() + i * PAGE_SIZE, x.0);
                 self.task
-                    .map(x.0, vaddr + i * PAGE_SIZE, MappingFlags::URWX);
+                        .map(x.0, vaddr + i * PAGE_SIZE, MappingFlags::URWX);
             });
         let size = trackers.as_ref().unwrap().trackers.len() * PAGE_SIZE;
         self.task.pcb.lock().shms.push(MapedSharedMemory {
@@ -123,7 +124,7 @@ impl UserTaskContainer {
             key
         };
         
-        if let Some(sem) = sems.get(&actual_key) {
+        if let Some(_sem) = sems.get(&actual_key) {
             // 信号量已存在
             return Ok(actual_key);
         }
