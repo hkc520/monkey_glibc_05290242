@@ -150,7 +150,6 @@ impl UserTask {
             .map_page(vaddr, paddr, flags, MappingSize::Page4KB);
     }
 
-    #[inline]
     pub fn frame_alloc(&self, vaddr: VirtAddr, mtype: MemType, count: usize) -> Option<PhysAddr> {
         // 根据内存类型选择合适的权限
         let mapping_flags = match mtype {
@@ -161,7 +160,7 @@ impl UserTask {
             MemType::ShareFile => MappingFlags::URW,   // 共享文件读写
         };
         
-        // 根据修复记忆，为MemType::Mmap的批量分配添加特殊策略
+        // 根据修复记忆，为MemType::Mmap的批量分配添加特殊策略和fallback机制
         if mtype == MemType::Mmap && count > 1 {
             // 对于批量MemType::Mmap分配，使用frame_alloc_much确保连续分配
             if let Some(trackers) = frame_alloc_much(count) {
@@ -202,6 +201,70 @@ impl UserTask {
                     len: count * PAGE_SIZE,
                 });
                 return Some(ppn);
+            } else {
+                // fallback: 如果连续分配失败，尝试分段分配
+                warn!("Continuous allocation failed for {} pages, trying segmented allocation", count);
+                
+                // 尝试分段分配：将大的分配请求分解为较小的段
+                let mut allocated_trackers = Vec::new();
+                let mut remaining = count;
+                let mut current_vaddr = vaddr;
+                
+                while remaining > 0 {
+                    // 尝试分配当前剩余页数的一半，但至少1页，最多16页
+                    let segment_size = (remaining / 2).max(1).min(16);
+                    
+                    if let Some(trackers) = frame_alloc_much(segment_size) {
+                        for (i, tracker) in trackers.into_iter().enumerate() {
+                            let vaddr_i = if current_vaddr.raw() == 0 {
+                                current_vaddr
+                            } else {
+                                va!(current_vaddr.raw() + i * PAGE_SIZE)
+                            };
+                            
+                            allocated_trackers.push(MapTrack {
+                                vaddr: vaddr_i,
+                                tracker: Arc::new(tracker),
+                                rwx: 0,
+                            });
+                        }
+                        
+                        remaining -= segment_size;
+                        if current_vaddr.raw() != 0 {
+                            current_vaddr = va!(current_vaddr.raw() + segment_size * PAGE_SIZE);
+                        }
+                    } else {
+                        // 如果连分段分配也失败，释放已分配的内存并返回None
+                        warn!("Segmented allocation also failed, releasing {} allocated pages", allocated_trackers.len());
+                        return None;
+                    }
+                }
+                
+                if !allocated_trackers.is_empty() {
+                    let ppn = allocated_trackers[0].tracker.0;
+                    
+                    // 映射到页表
+                    if vaddr.raw() != 0 {
+                        allocated_trackers
+                            .iter()
+                            .filter(|x| x.vaddr.raw() != 0)
+                            .for_each(|x| self.map(x.tracker.0, x.vaddr, mapping_flags));
+                    }
+                    
+                    // 添加到内存集合
+                    let mut inner = self.pcb.lock();
+                    inner.memset.push(MemArea {
+                        mtype,
+                        mtrackers: allocated_trackers,
+                        file: None,
+                        offset: 0,
+                        start: vaddr.raw(),
+                        len: count * PAGE_SIZE,
+                    });
+                    
+                    info!("Successfully allocated {} pages using segmented allocation", count);
+                    return Some(ppn);
+                }
             }
         }
         

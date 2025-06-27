@@ -3,7 +3,7 @@ use core::ops::Deref;
 
 use alloc::vec::Vec;
 use bit_field::{BitArray, BitField};
-use log::info;
+use log::{info, warn};
 use polyhal::{consts::VIRT_ADDR_START, pa, pagetable::PAGE_SIZE, PhysAddr};
 use sync::Mutex;
 
@@ -125,33 +125,69 @@ impl FrameRegionMap {
     /// pages: usize 要申请的页表数量
     #[allow(unused_assignments)]
     pub fn alloc_much(&mut self, pages: usize) -> Option<Vec<FrameTracker>> {
-        // TODO: alloc more than 64?;
-        // 优化本函数
+        // 改进的大内存分配算法
         let start_ppn = self.paddr.raw() / PAGE_SIZE;
         let end_ppn = self.paddr_end.raw() / PAGE_SIZE;
-        if pages > end_ppn - start_ppn {
+        let total_pages = end_ppn - start_ppn;
+        
+        // 检查请求是否超出总可用内存
+        if pages > total_pages {
+            warn!("Requested {} pages exceeds total available {} pages", pages, total_pages);
             return None;
         }
-        for mut i in 0..(end_ppn - start_ppn - pages + 1) {
-            let mut j = i;
-            loop {
-                if j - i >= pages {
+        
+        // 计算当前空闲页数
+        let free_count = self.get_free_page_count();
+        if pages > free_count {
+            warn!("Requested {} pages but only {} pages are free", pages, free_count);
+            return None;
+        }
+        
+        // 改进的连续分配算法 - 使用滑动窗口方法
+        let mut consecutive_start = 0;
+        let mut consecutive_count = 0;
+        
+        for i in 0..total_pages {
+            if self.bits.get_bit(i) {
+                // 页面已被使用，重置计数器
+                consecutive_start = i + 1;
+                consecutive_count = 0;
+            } else {
+                // 页面空闲，增加计数器
+                consecutive_count += 1;
+                
+                // 检查是否找到足够的连续页面
+                if consecutive_count >= pages {
                     let mut ans = Vec::new();
-                    (i..j).into_iter().for_each(|x| {
+                    for x in consecutive_start..(consecutive_start + pages) {
                         self.bits.set_bit(x, true);
                         ans.push(FrameTracker::new(pa!((start_ppn + x) * PAGE_SIZE)));
-                    });
+                    }
                     return Some(ans);
                 }
-
-                if self.bits.get_bit(j) == true {
-                    i = j + 1;
-                    break;
-                }
-
-                j += 1;
             }
         }
+        
+        // 如果连续分配失败，提供详细的诊断信息
+        warn!("Failed to allocate {} consecutive pages. Available free pages: {}, Total pages: {}", 
+              pages, free_count, total_pages);
+        
+        // 分析内存碎片化程度
+        let mut max_consecutive = 0;
+        let mut current_consecutive = 0;
+        
+        for i in 0..total_pages {
+            if self.bits.get_bit(i) {
+                max_consecutive = max_consecutive.max(current_consecutive);
+                current_consecutive = 0;
+            } else {
+                current_consecutive += 1;
+            }
+        }
+        max_consecutive = max_consecutive.max(current_consecutive);
+        
+        warn!("Memory fragmentation analysis: largest consecutive block = {} pages", max_consecutive);
+        
         None
     }
 

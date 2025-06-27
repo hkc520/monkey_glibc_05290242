@@ -250,6 +250,7 @@ pub async fn initproc() {
         command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
 
         //command("/musl/busybox sh ", glibc_home_dir.clone()).await;
+        //command("/glibc/busybox sh iperf_testcode.sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP START lmbench-glibc ####",
             glibc_home_dir.clone(),
@@ -376,6 +377,7 @@ pub async fn initproc() {
         let home_dir = PathBuf::from("/musl");
         //command("/musl/busybox sh ", home_dir.clone()).await;
         //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
+        command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START lmbench-musl ####",
             home_dir.clone(),
@@ -519,6 +521,7 @@ pub async fn initproc() {
         let home_dir = PathBuf::from("/musl");
         
         //command("/musl/busybox sh ", home_dir.clone()).await;
+        command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
 
         command(
