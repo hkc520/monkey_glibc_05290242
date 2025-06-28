@@ -63,11 +63,14 @@ impl DevDir {
         map.insert("stderr", Arc::new(Tty::new()));
         map.insert("stdin", Arc::new(Tty::new()));
         map.insert("ttyv0", Arc::new(Tty::new()));
+        map.insert("tty", Arc::new(Tty::new()));
+        map.insert("console", Arc::new(Tty::new()));
         map.insert("null", Arc::new(null::Null));
         map.insert("zero", Arc::new(zero::Zero));
         map.insert("shm", Arc::new(shm::Shm));
         map.insert("rtc", Arc::new(rtc::Rtc));
         map.insert("urandom", Arc::new(urandom::Urandom));
+        map.insert("random", Arc::new(urandom::Urandom));
         map.insert("cpu_dma_latency", Arc::new(cpu_dma_latency::CpuDmaLatency));
         // map.insert("tty", Arc::new(stdout::Stdout));
 

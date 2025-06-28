@@ -3,6 +3,7 @@ use core::cmp;
 use alloc::collections::VecDeque;
 use bitflags::bitflags;
 use devices::utils::{get_char, puts};
+use log::debug;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use sync::Mutex;
@@ -47,16 +48,16 @@ impl INodeInterface for Tty {
     }
 
     fn stat(&self, stat: &mut Stat) -> VfsResult<()> {
-        stat.dev = 1;
+        stat.dev = 0x0500; // Device ID for tty devices (major=5)
         stat.ino = 1; // TODO: convert path to number(ino)
-        stat.mode = StatMode::CHAR; // TODO: add access mode
+        stat.mode = StatMode::CHAR | StatMode::OWNER_READ | StatMode::OWNER_WRITE | StatMode::GROUP_READ | StatMode::GROUP_WRITE | StatMode::OTHER_READ | StatMode::OTHER_WRITE; // Character device with 666 permissions
         stat.nlink = 1;
-        stat.uid = 1000;
-        stat.gid = 1000;
-        stat.size = 15;
+        stat.uid = 0; // root
+        stat.gid = 0; // root  
+        stat.size = 0;
         stat.blksize = 512;
         stat.blocks = 0;
-        stat.rdev = 0; // TODO: add device id
+        stat.rdev = 0x0500; // Same as dev for character devices
         Ok(())
     }
 
@@ -122,6 +123,42 @@ impl INodeInterface for Tty {
                 unsafe {
                     *self.winsize.lock() = *(arg as *mut WinSize).as_mut().unwrap();
                 }
+                Ok(0)
+            }
+            TeletypeCommand::TIOCSCTTY => {
+                // Set controlling terminal - for daemon processes
+                // In a full implementation, this would set the calling process as the session leader
+                // and make this terminal the controlling terminal for the session
+                debug!("TIOCSCTTY: Setting controlling terminal (basic implementation)");
+                Ok(0)
+            }
+            TeletypeCommand::TIOCNOTTY => {
+                // Release controlling terminal - for daemon processes
+                // This is used when a process wants to detach from its controlling terminal
+                debug!("TIOCNOTTY: Releasing controlling terminal (basic implementation)");
+                Ok(0)
+            }
+            TeletypeCommand::TIOCGSID => {
+                // Get session ID of the terminal
+                // For now, return a dummy session ID
+                match unsafe { (arg as *mut u32).as_mut() } {
+                    Some(sid) => {
+                        *sid = 1; // Dummy session ID
+                        debug!("TIOCGSID: Returning session ID 1");
+                        Ok(0)
+                    }
+                    None => Err(Errno::EINVAL),
+                }
+            }
+            TeletypeCommand::FIONCLEX => {
+                // Clear close-on-exec flag
+                // This is typically handled at the file descriptor level
+                debug!("FIONCLEX: Clearing close-on-exec flag (no-op)");
+                Ok(0)
+            }
+            TeletypeCommand::FIOCLEX => {
+                // Cloexec
+                debug!("FIOCLEX: Setting close-on-exec flag");
                 Ok(0)
             }
             _ => Err(Errno::EPERM),
@@ -242,6 +279,13 @@ pub enum TeletypeCommand {
     TIOCGWINSZ = 0x5413,
     /// Set window size.
     TIOCSWINSZ = 0x5414,
+
+    /// Set controlling terminal (for daemon processes)
+    TIOCSCTTY = 0x540E,
+    /// Release controlling terminal (for daemon processes)  
+    TIOCNOTTY = 0x5422,
+    /// Get session ID
+    TIOCGSID = 0x5429,
 
     /// Non-cloexec
     FIONCLEX = 0x5450,

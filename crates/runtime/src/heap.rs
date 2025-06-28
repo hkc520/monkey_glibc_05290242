@@ -371,7 +371,7 @@ fn alloc_error_handler(layout: Layout) -> ! {
         error!("Pool remaining (end): {} bytes ({} KB)", remaining, remaining / 1024);
         error!("Total allocations: {} (used: {}, freed: {})", used_count + free_count, used_count, free_count);
         
-        error!("This error is likely caused by:");
+    error!("This error is likely caused by:");
         error!("1. Physical memory fragmentation - try reducing allocation size");
         error!("2. Heap exhaustion in user space application");
         error!("3. Large pool exhaustion for >64KB allocations");

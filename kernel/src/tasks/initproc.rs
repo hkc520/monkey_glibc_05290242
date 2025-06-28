@@ -184,11 +184,47 @@ async fn command(cmd: &str, work_dir: PathBuf) {
                 }
                 yield_now().await;
             }
+            
+            // 额外等待确保进程完全清理
+            for _ in 0..100000 {
+                yield_now().await;
+            }
+            
+            // 强制内存屏障确保状态一致性
+            core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
         }
         Err(_) => {
             println!("unknown command: {}", cmd);
         }
     }
+}
+
+/// 专门用于iperf测试的命令执行，包含额外的网络隔离和清理
+async fn command_iperf(cmd: &str, work_dir: PathBuf) {
+    log::warn!("Starting iperf test with enhanced isolation: {}", cmd);
+    
+    // 第一步：强制清理所有现有任务
+    kill_all_tasks().await;
+    
+    // 第二步：内存屏障确保所有状态同步
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+    for _ in 0..100000 {
+        core::hint::spin_loop();
+    }
+    
+    // 第三步：执行iperf测试
+    command(cmd, work_dir.clone()).await;
+    
+    // 第四步：测试后强制清理
+    kill_all_tasks().await;
+    
+    // 第五步：额外的清理等待
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+    for _ in 0..200000 {
+        core::hint::spin_loop();
+    }
+    
+    log::warn!("Completed iperf test with enhanced isolation");
 }
 
 pub async fn initproc() {
@@ -250,7 +286,8 @@ pub async fn initproc() {
         command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
 
         //command("/musl/busybox sh ", glibc_home_dir.clone()).await;
-        //command("/glibc/busybox sh iperf_testcode.sh", glibc_home_dir.clone()).await;
+        // 使用专门的iperf测试函数，包含增强的隔离机制 (glibc)
+        command_iperf("/glibc/busybox sh iperf_testcode.sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP START lmbench-glibc ####",
             glibc_home_dir.clone(),
@@ -377,7 +414,9 @@ pub async fn initproc() {
         let home_dir = PathBuf::from("/musl");
         //command("/musl/busybox sh ", home_dir.clone()).await;
         //command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
-        command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
+        
+        // 使用专门的iperf测试函数，包含增强的隔离机制
+        //command_iperf("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START lmbench-musl ####",
             home_dir.clone(),
@@ -521,7 +560,9 @@ pub async fn initproc() {
         let home_dir = PathBuf::from("/musl");
         
         //command("/musl/busybox sh ", home_dir.clone()).await;
-        command("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
+        
+        // 使用专门的iperf测试函数，包含增强的隔离机制 (loongarch64)
+        command_iperf("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
         command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
 
         command(

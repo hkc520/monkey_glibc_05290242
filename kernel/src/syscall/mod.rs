@@ -160,6 +160,9 @@ impl UserTaskContainer {
             Sysno::getgid => self.sys_getgid().await,
             Sysno::getuid => self.sys_getuid().await,
             Sysno::getpgid => self.sys_getpgid().await,
+            Sysno::getsid => self.sys_getsid(args[0] as _).await,
+            Sysno::prctl => self.sys_prctl(args[0] as _, args[1] as _, args[2] as _, args[3] as _, args[4] as _).await,
+            Sysno::mknodat => self.sys_mknodat(args[0] as _, args[1].into(), args[2] as _, args[3] as _).await,
             Sysno::ioctl => {
                 self.sys_ioctl(
                     args[0] as _,
@@ -503,8 +506,8 @@ impl UserTaskContainer {
             Sysno::sync | Sysno::access => Ok(0),
             Sysno::membarrier => {
                 self.sys_membarrier(args[0] as _, args[1] as _, args[2] as _)
-                    .await
-            }
+                                          .await
+              }
             _ => {
                 warn!("unsupported syscall: {}", call_id);
                 Err(Errno::EPERM)

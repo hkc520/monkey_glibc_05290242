@@ -7,7 +7,7 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use core::cmp::{self, min};
 use core::ops::Add;
 use polyhal::pagetable::PAGE_SIZE;
-use runtime::frame::{frame_alloc, FrameTracker};
+use runtime::frame::{frame_alloc, FrameTracker, get_free_pages};
 use sync::Mutex;
 use syscalls::Errno;
 use vfscore::{
@@ -326,38 +326,95 @@ impl INodeInterface for RamFile {
     }
 
     fn writeat(&self, mut offset: usize, buffer: &[u8]) -> VfsResult<usize> {
-        log::info!("write to ramfs");
+        log::info!("write to ramfs: offset={}, buffer_len={}", offset, buffer.len());
         let mut buffer_off = 0;
         let pages = (offset + buffer.len()).div_ceil(PAGE_SIZE);
 
         let mut inner = self.inner.pages.lock();
+        let current_pages = inner.len();
+        let needed_pages = if pages > current_pages { pages - current_pages } else { 0 };
+        
+        log::info!("ramfs write: current_pages={}, total_needed={}, additional_needed={}", 
+                   current_pages, pages, needed_pages);
 
-        for _ in inner.len()..pages {
-            inner.push(frame_alloc().expect("can't alloc frame in ram fs"));
+        // 尝试逐个分配所需的页面，如果失败则尝试部分写入
+        let mut allocated_pages = 0;
+        for i in inner.len()..pages {
+            match frame_alloc() {
+                Some(frame) => {
+                    inner.push(frame);
+                    allocated_pages += 1;
+                    log::debug!("ramfs: allocated page {}/{}", i + 1, pages);
+                }
+                None => {
+                    // 获取当前系统内存状态
+                    let free_pages = get_free_pages();
+                    log::warn!("ramfs: failed to allocate frame for write operation");
+                    log::warn!("  - requested pages: {}, current pages: {}", pages, inner.len());
+                    log::warn!("  - additional pages needed: {}, allocated: {}, system free pages: {}", 
+                              needed_pages, allocated_pages, free_pages);
+                    log::warn!("  - file: {}, write offset: {}, buffer size: {}", self.inner.name, offset, buffer.len());
+                    
+                    // 如果我们已经分配了一些页面，尝试部分写入
+                    if allocated_pages > 0 {
+                        log::info!("ramfs: attempting partial write with {} allocated pages", allocated_pages);
+                        break;
+                    } else {
+                        // 如果一个页面都分配不了，返回内存不足错误
+                        return Err(Errno::ENOMEM);
+                    }
+                }
+            }
         }
 
-        let mut wsize = buffer.len();
+        // 计算实际可以写入的数据量
+        let available_space = inner.len() * PAGE_SIZE;
+        let max_writable = if offset < available_space {
+            available_space - offset
+        } else {
+            0
+        };
+        let actual_write_size = core::cmp::min(buffer.len(), max_writable);
+        
+        if actual_write_size < buffer.len() {
+            log::warn!("ramfs: partial write - requested {} bytes, can only write {} bytes", 
+                      buffer.len(), actual_write_size);
+        }
+
+        // 执行实际的写入操作
+        let mut wsize = actual_write_size;
+        let mut write_offset = offset;
         loop {
-            let curr_size = cmp::min(PAGE_SIZE - offset % PAGE_SIZE, wsize);
+            let curr_size = cmp::min(PAGE_SIZE - write_offset % PAGE_SIZE, wsize);
             if curr_size == 0 {
                 break;
             }
-            let index = offset / PAGE_SIZE;
+            let index = write_offset / PAGE_SIZE;
+            if index >= inner.len() {
+                log::warn!("ramfs: write index {} exceeds available pages {}", index, inner.len());
+                break;
+            }
+            
             inner[index]
                 .0
-                .add(offset % PAGE_SIZE)
+                .add(write_offset % PAGE_SIZE)
                 .slice_mut_with_len(curr_size)
                 .copy_from_slice(&buffer[buffer_off..buffer_off + curr_size]);
-            offset += curr_size;
+            write_offset += curr_size;
             buffer_off += curr_size;
             wsize -= curr_size;
         }
 
         let file_size = *self.inner.len.lock();
-        if offset > file_size {
-            *self.inner.len.lock() = offset;
+        if write_offset > file_size {
+            *self.inner.len.lock() = write_offset;
         }
-        Ok(buffer.len())
+        
+        log::info!("ramfs write completed: final_file_size={}, pages_used={}, bytes_written={}", 
+                  *self.inner.len.lock(), inner.len(), actual_write_size);
+        
+        // 返回实际写入的字节数
+        Ok(actual_write_size)
     }
 
     fn truncate(&self, size: usize) -> VfsResult<()> {
@@ -382,7 +439,13 @@ impl INodeInterface for RamFile {
         }
 
         for _ in pages..target_pages {
-            page_cont.push(frame_alloc().expect("can't alloc frame in ram fs"));
+            match frame_alloc() {
+                Some(frame) => page_cont.push(frame),
+                None => {
+                    log::error!("ramfs: failed to allocate frame for truncate operation, target pages: {}, current pages: {}", target_pages, pages);
+                    return Err(Errno::ENOMEM);
+                }
+            }
         }
 
         Ok(())

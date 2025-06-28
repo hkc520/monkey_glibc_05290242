@@ -757,6 +757,31 @@ impl UserTask {
         );
         None
     }
+
+    /// 简单的资源清理函数
+    pub fn simple_cleanup(&self) {
+        log::info!("Simple resource cleanup for task {}", self.task_id);
+        
+        // 内存屏障
+        core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+        
+        // 清理文件描述符
+        {
+            let mut pcb = self.pcb.lock();
+            for i in 0..pcb.fd_table.len() {
+                if pcb.fd_table[i].is_some() {
+                    pcb.fd_table[i] = None;
+                }
+            }
+        }
+        
+        // 短暂等待
+        for _ in 0..50000 {
+            core::hint::spin_loop();
+        }
+        
+        log::info!("Simple cleanup completed for task {}", self.task_id);
+    }
 }
 
 impl AsyncTask for UserTask {

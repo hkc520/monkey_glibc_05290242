@@ -613,13 +613,27 @@ impl UserTaskContainer {
 
     pub async fn sys_setsid(&self) -> SysResult {
         debug!("[task {}] sys_setsid", self.tid);
+        
+        // Check if the calling process is already a process group leader
+        // In a full implementation, we would check if pid == pgid
+        // For now, we'll allow it to proceed
+        
+        // Detach from parent process
         let parent = self.task.parent.read().clone();
-
         if let Some(parent) = parent.upgrade() {
             parent.pcb.lock().children.retain(|x| x.task_id != self.tid);
             *self.task.parent.write() = Weak::<UserTask>::new();
+            debug!("[task {}] setsid: detached from parent", self.tid);
         }
-        Ok(0)
+        
+        // In a full implementation, we would:
+        // 1. Create a new session with this process as the session leader
+        // 2. Create a new process group with this process as the group leader  
+        // 3. Detach from any controlling terminal
+        
+        // For now, return the task ID as the new session ID
+        debug!("[task {}] setsid: became session leader with SID {}", self.tid, self.tid);
+        Ok(self.tid)
     }
 
     pub async fn sys_sched_getaffinity(

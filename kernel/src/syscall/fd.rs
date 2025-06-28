@@ -17,7 +17,7 @@ use fs::{
     pipe::create_pipe, OpenFlags, PollEvent, PollFd, SeekFrom, Stat, StatFS, StatMode, TimeSpec,
     UTIME_NOW,
 };
-use log::debug;
+use log::{debug, warn};
 use num_traits::FromPrimitive;
 use polyhal::VirtAddr;
 use syscalls::Errno;
@@ -192,19 +192,45 @@ impl UserTaskContainer {
             "sys_openat @ fd: {}, filename: {}, flags: {:?}, mode: {}",
             dir_fd as isize, filename, flags, mode
         );
+        
+        // Special logging for daemon-related file operations
+        if filename.contains("dev/") || filename.contains("daemon") || filename.contains("null") || filename.contains("tty") {
+            warn!("DAEMON_DEBUG: Opening device/daemon file via openat: {}, flags: {:?}, mode: {:#o}", filename, flags, mode);
+        }
+        
         // let dir = to_node(&self.task, fd, filename)?;
         // let file = dir.dentry_open(filename, flags)?;
-        let file = self.task.fd_open(dir_fd, filename, flags)?;
-        let fd = self.task.alloc_fd().ok_or(Errno::EMFILE)?;
-        self.task.set_fd(fd, Arc::new(file));
-        debug!("sys_openat @ ret fd: {}", fd);
-        Ok(fd)
+        match self.task.fd_open(dir_fd, filename, flags) {
+            Ok(file) => {
+                let fd = self.task.alloc_fd().ok_or(Errno::EMFILE)?;
+                self.task.set_fd(fd, Arc::new(file));
+                debug!("sys_openat @ ret fd: {}", fd);
+                Ok(fd)
+            }
+            Err(e) => {
+                if filename.contains("dev/") || filename.contains("daemon") || filename.contains("null") || filename.contains("tty") {
+                    warn!("DAEMON_DEBUG: Failed to open device file {}: {:?}", filename, e);
+                }
+                Err(e)
+            }
+        }
     }
 
-    #[cfg(target_arch = "x86_64")]
-    pub async fn sys_open(&self, path: UserRef<i8>, flags: usize, mode: usize) -> SysResult {
-        // syscall_openat(axprocess::link::AT_FDCWD, path, flags, mode)
-        self.sys_openat(AT_CWD, path, flags, mode).await
+    pub async fn sys_open(&self, path: UserRef<u8>, flags: usize, mode: usize) -> SysResult {
+        let path = path.get_cstr().map_err(|_| Errno::EINVAL)?;
+        debug!("sys_open @ path: {}, flags: {:#x}, mode: {:#o}", path, flags, mode);
+        
+        // Special logging for daemon-related file operations
+        if path.contains("dev/") || path.contains("daemon") || path.contains("null") || path.contains("tty") {
+            warn!("DAEMON_DEBUG: Opening device/daemon file: {}, flags: {:#x}, mode: {:#o}", path, flags, mode);
+        }
+        
+        // Convert string path to UserRef<i8> for openat
+        let path_bytes = path.as_bytes();
+        let path_ptr = path_bytes.as_ptr() as *const i8;
+        let path_ref = UserRef::<i8>::from(path_ptr as usize);
+        
+        self.sys_openat(AT_CWD, path_ref, flags, mode).await
     }
 
     pub async fn sys_faccess_at(

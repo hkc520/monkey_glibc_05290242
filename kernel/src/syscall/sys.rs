@@ -4,6 +4,7 @@ use super::{
 };
 use crate::{user::UserTaskContainer, utils::useref::UserRef};
 use log::{debug, warn};
+use syscalls::Errno;
 
 impl UserTaskContainer {
     pub async fn sys_uname(&self, uts_ptr: UserRef<UTSname>) -> SysResult {
@@ -268,5 +269,91 @@ impl UserTaskContainer {
                 Ok(0)
             }
         }
+    }
+
+    pub async fn sys_getsid(&self, pid: usize) -> SysResult {
+        debug!("[task {}] sys_getsid @ pid: {}", self.tid, pid);
+        // For simplicity, return the task ID as session ID
+        // In a full implementation, we would track session IDs separately
+        if pid == 0 {
+            // pid == 0 means current process
+            Ok(self.tid)
+        } else {
+            // For other processes, we would need to look them up
+            // For now, just return the pid as session ID
+            Ok(pid)
+        }
+    }
+
+    pub async fn sys_prctl(&self, option: usize, arg2: usize, arg3: usize, arg4: usize, arg5: usize) -> SysResult {
+        debug!("[task {}] sys_prctl @ option: {}, args: {}, {}, {}, {}", 
+               self.tid, option, arg2, arg3, arg4, arg5);
+        
+        // prctl options from Linux
+        const PR_SET_PDEATHSIG: usize = 1;
+        const PR_GET_PDEATHSIG: usize = 2;
+        const PR_GET_DUMPABLE: usize = 3;
+        const PR_SET_DUMPABLE: usize = 4;
+        const PR_SET_NAME: usize = 15;
+        const PR_GET_NAME: usize = 16;
+        
+        match option {
+            PR_SET_PDEATHSIG => {
+                // Set parent death signal - for daemon processes
+                debug!("prctl: Setting parent death signal to {}", arg2);
+                Ok(0)
+            }
+            PR_GET_PDEATHSIG => {
+                // Get parent death signal
+                debug!("prctl: Getting parent death signal");
+                Ok(0)
+            }
+            PR_SET_DUMPABLE => {
+                // Set dumpable flag - commonly used by daemons
+                debug!("prctl: Setting dumpable flag to {}", arg2);
+                Ok(0)
+            }
+            PR_GET_DUMPABLE => {
+                // Get dumpable flag
+                debug!("prctl: Getting dumpable flag");
+                Ok(1) // Return 1 (dumpable)
+            }
+            PR_SET_NAME => {
+                // Set process name - commonly used by daemons
+                debug!("prctl: Setting process name");
+                Ok(0)
+            }
+            PR_GET_NAME => {
+                // Get process name
+                debug!("prctl: Getting process name");
+                Ok(0)
+            }
+            _ => {
+                warn!("prctl: Unsupported option {}, returning success", option);
+                Ok(0)
+            }
+        }
+    }
+
+    pub async fn sys_mknod(&self, pathname: UserRef<u8>, mode: usize, dev: usize) -> SysResult {
+        let path = pathname.get_cstr().map_err(|_| Errno::EINVAL)?;
+        debug!("[task {}] sys_mknod @ path: {}, mode: {:#x}, dev: {:#x}", 
+               self.tid, path, mode, dev);
+        
+        // For now, just return success for device creation attempts
+        // In a full implementation, this would create device nodes
+        warn!("mknod not fully implemented: path={}, mode={:#x}, dev={:#x}", path, mode, dev);
+        Ok(0)
+    }
+
+    pub async fn sys_mknodat(&self, dirfd: usize, pathname: UserRef<u8>, mode: usize, dev: usize) -> SysResult {
+        let path = pathname.get_cstr().map_err(|_| Errno::EINVAL)?;
+        debug!("[task {}] sys_mknodat @ dirfd: {}, path: {}, mode: {:#x}, dev: {:#x}", 
+               self.tid, dirfd, path, mode, dev);
+        
+        // For now, just return success for device creation attempts
+        warn!("mknodat not fully implemented: dirfd={}, path={}, mode={:#x}, dev={:#x}", 
+              dirfd, path, mode, dev);
+        Ok(0)
     }
 }
