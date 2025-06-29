@@ -35,7 +35,7 @@ mod utils;
 
 use crate::tasks::current_user_task;
 use crate::user::task_ilegal;
-use alloc::sync::Arc;
+// use alloc::sync::Arc;
 use core::hint::spin_loop;
 use devices::{self, get_int_device, PAGE_SIZE, VIRT_ADDR_START};
 use executor::current_task;
@@ -189,12 +189,7 @@ fn main(hart_id: usize) {
 
     // initialize filesystem
     fs::init();
-    {
-        File::open("/var".into(), OpenFlags::O_DIRECTORY)
-            .expect("can't open /var")
-            .mkdir("tmp")
-            .expect("can't create tmp dir");
-    }
+    // Note: /var/tmp is already mounted as RamFs in fs::init(), no need to create it manually
     // 输出根目录下的文件
     /*  println!("根目录下的文件列表：");
     let root_dir = File::open("/".into(), OpenFlags::O_DIRECTORY).expect("无法打开根目录");

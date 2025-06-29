@@ -74,14 +74,19 @@ pub fn init() {
         // let fs = &filesystems[0].0;
         // let rootfs = filesystems[0].0.root_dir();
         let rootfs = File::open(PathBuf::new(), OpenFlags::O_RDONLY).unwrap();
+        // 创建基础目录结构
         rootfs.mkdir("dev").expect("can't create devfs dir");
-        // dev.mkdir("shm").expect("can't create shm dir");
         rootfs.mkdir("tmp").expect("can't create tmp dir");
-        // rootfs.mkdir("lib").expect("can't create lib dir");
         rootfs.mkdir("home").expect("can't create home dir");
         rootfs.mkdir("var").expect("can't create var dir");
         rootfs.mkdir("proc").expect("can't create proc dir");
-        rootfs.mkdir("bin").expect("can't create var dir");
+        rootfs.mkdir("bin").expect("can't create bin dir");
+        
+        // 为LTP测试确保/var/tmp也存在
+        let var_dir = File::open(PathBuf::from("/var"), OpenFlags::O_RDONLY).expect("can't open /var");
+        var_dir.mkdir("tmp").ok(); // 不强制要求成功，因为可能已经存在
+        
+        info!("Filesystem initialization completed - all directories created");
     }
 }
 

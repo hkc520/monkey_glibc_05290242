@@ -33,6 +33,8 @@ bitflags! {
         const	SIGTRAP		= bit!(4);
         /// IOT instruction, abort() on a PDP-11.
         const	SIGABRT		= bit!(5);
+        /// IOT instruction, same as SIGABRT (for compatibility).
+        const	SIGIOT		= Self::SIGABRT.bits();
         /// Bus error.
         const	SIGBUS		= bit!(6);
         /// Erroneous arithmetic operation.

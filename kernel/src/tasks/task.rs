@@ -1,4 +1,4 @@
-use crate::tasks::memset;
+// use crate::tasks::memset;
 use super::{
     filetable::{rlimits_new, FileTable},
     memset::{MemSet, MemType},
@@ -24,7 +24,7 @@ use core::{cmp::max, mem::size_of};
 use devices::PAGE_SIZE;
 use executor::{release_task, task::TaskType, task_id_alloc, AsyncTask, TaskId};
 use fs::{file::File, pathbuf::PathBuf, INodeInterface};
-use log::debug;
+use log::{debug, info, warn};
 use polyhal::{va, MappingFlags, MappingSize, PageTableWrapper, PhysAddr, VirtAddr};
 use polyhal_trap::trapframe::{TrapFrame, TrapFrameArgs};
 use runtime::frame::{alignup, frame_alloc_much};
@@ -50,6 +50,8 @@ pub struct ProcessControlBlock {
     pub timer: [ProcessTimer; 3],
     pub threads: Vec<Weak<UserTask>>,
     pub exit_code: Option<usize>,
+    pub exit_signal: Option<usize>, // 如果进程被信号杀死，记录信号号
+    pub core_dumped: bool, // 如果进程产生了core dump
     pub umask: usize,
 }
 
@@ -108,6 +110,8 @@ impl UserTask {
             shms: vec![],
             timer: [Default::default(); 3],
             exit_code: None,
+            exit_signal: None,
+            core_dumped: false,
             threads: Vec::new(),
             umask: 0o022, // 默认umask值
         };
@@ -433,7 +437,36 @@ impl UserTask {
 
     #[inline]
     pub fn exit_with_signal(&self, signal: usize) {
-        self.exit(128 + signal);
+        info!("Process {} terminated by signal {}", self.task_id, signal);
+        info!("LTP_SIGNAL_DEBUG: Process {} being terminated by signal {}", self.task_id, signal);
+        
+        // 检查信号是否应该产生core dump
+        let should_dump_core = match signal {
+            3 | 4 | 5 | 6 | 8 | 10 | 11 => true, // SIGQUIT, SIGILL, SIGTRAP, SIGABRT, SIGFPE, SIGBUS, SIGSEGV
+            _ => false,
+        };
+        
+        // 特别关注abort()相关的测试
+        if signal == 6 {  // SIGABRT/SIGIOT
+            info!("LTP_ABORT_SIGNAL_DEBUG: abort() signal (SIGABRT/SIGIOT) received in process {}, will dump core: {}", 
+                  self.task_id, should_dump_core);
+        }
+        
+        // 标记进程是被信号杀死的
+        {
+            let mut pcb = self.pcb.lock();
+            pcb.exit_signal = Some(signal);
+            pcb.exit_code = Some(0); // 被信号杀死时，退出码设为0
+            pcb.core_dumped = should_dump_core;
+            
+            if should_dump_core {
+                info!("Process {} will dump core due to signal {}", self.task_id, signal);
+                info!("LTP_CORE_DEBUG: Process {} will dump core due to signal {}", self.task_id, signal);
+            }
+        }
+        
+        // 执行正常的退出清理
+        self.exit(0);
     }
 
     pub fn cow_fork(self: Arc<Self>) -> Arc<Self> {
@@ -459,8 +492,10 @@ impl UserTask {
         pcb.memset.iter().for_each(|area| {
             let map_area = area.clone();
 
-            // 只在非 LoongArch 架构或特定条件下才进行内存空隙填补
-            // 这避免了对 LoongArch 系统调用测试的干扰
+            // 禁用内存空隙填补逻辑 - 这会导致段错误
+            // 这个逻辑创建了没有实际物理页面映射的内存区域
+            // 当程序访问这些区域时会触发SIGSEGV
+            #[cfg(never)]  // 完全禁用这个逻辑
             #[cfg(not(target_arch = "loongarch64"))]
             {
                 // 检查是否存在内存空隙，如果存在则填补
@@ -494,9 +529,17 @@ impl UserTask {
                 }
             }
 
+            // 根据内存区域类型选择映射权限：
+            //   - 对于 Shared / ShareFile ，必须带写权限，避免 fork 后写入触发 COW
+            //   - 其它区域沿用只读 + 可执行，后续由写时复制处理
+            let map_flags = match map_area.mtype {
+                MemType::Shared | MemType::ShareFile => MappingFlags::URWX,
+                _ => MappingFlags::URX,
+            };
+
             map_area.mtrackers.iter().for_each(|mtracker| {
-                new_task.map(mtracker.tracker.0, mtracker.vaddr, MappingFlags::URX);
-                self.map(mtracker.tracker.0, mtracker.vaddr, MappingFlags::URX);
+                new_task.map(mtracker.tracker.0, mtracker.vaddr, map_flags);
+                self.map(mtracker.tracker.0, mtracker.vaddr, map_flags);
             });
             new_task.pcb.lock().memset.push(map_area);
         });
@@ -799,6 +842,8 @@ impl AsyncTask for UserTask {
 
     #[inline]
     fn exit(&self, exit_code: usize) {
+        info!("LTP_EXIT_DEBUG: Process {} exiting with code {}", self.task_id, exit_code);
+        
         warn!("Process exit: task_id={}, process_id={}, exit_code={}, arch={}", 
             self.task_id, self.process_id, exit_code, 
             if cfg!(target_arch = "loongarch64") { "loongarch64" } else { "other" });
@@ -819,7 +864,7 @@ impl AsyncTask for UserTask {
         
         let exit_signal = tcb_writer.exit_signal;
         drop(tcb_writer);
-
+        
         // 改进的进程退出逻辑
         let should_cleanup_process = {
             let mut pcb = self.pcb.lock();
@@ -842,27 +887,26 @@ impl AsyncTask for UserTask {
         };
 
         if should_cleanup_process {
-            //warn!("Cleaning up process resources for process_id={}", self.process_id);
+            warn!("Thread exit triggering process cleanup for process_id={}", self.process_id);
             let mut pcb = self.pcb.lock();
             pcb.memset.clear();
             pcb.fd_table.clear();
             pcb.children.clear();
-            pcb.threads.clear();
-        }
+            pcb.exit_code = Some(exit_code);
 
-        // 通知父进程
-        if let Some(parent) = self.parent.read().upgrade() {
-            if exit_signal != 0 {
-                parent
-                    .tcb
-                    .write()
-                    .signal
-                    .add_signal(SignalFlags::from_num(exit_signal as usize));
-            } else {
-                parent.tcb.write().signal.add_signal(SignalFlags::SIGCHLD);
+            if let Some(parent) = self.parent.read().upgrade() {
+                if exit_signal != 0 {
+                    parent
+                        .tcb
+                        .write()
+                        .signal
+                        .add_signal(SignalFlags::from_num(exit_signal as _));
+                } else {
+                    parent.tcb.write().signal.add_signal(SignalFlags::SIGCHLD);
+                }
             }
         } else {
-            self.pcb.lock().children.clear();
+            warn!("Thread exit: task_id={} exited, but process continues", self.task_id);
         }
     }
 

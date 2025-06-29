@@ -1,5 +1,5 @@
 use super::UserTask;
-use crate::tasks::initproc::{get_dyn_path, get_glibc_path, get_libc_path}; // 添加get_glibc_path导入
+use crate::tasks::initproc::{get_dyn_path, get_libc_path}; // 添加get_glibc_path导入
 use crate::{
     consts::USER_DYN_ADDR,
     tasks::{

@@ -56,19 +56,41 @@ if signal == SignalFlags::SIGSEGV {
         // SIG_ERR = -1, SIG_DEF(default) = 0, SIG_IGN = 1(ignore)
         if sigaction.handler == 0 {
             match signal {
-                SignalFlags::SIGCANCEL | SignalFlags::SIGSEGV | SignalFlags::SIGILL => {
-                   if signal == SignalFlags::SIGSEGV {  
-                warn!("SIGNAL_DEBUG: SIGSEGV default exit - this indicates memory access failure");  
-                warn!("SIGNAL_DEBUG: Check if gap region allocation was successful but mapping failed");  
-            }  
+                // 这些信号的默认行为是终止进程
+                SignalFlags::SIGCANCEL | SignalFlags::SIGSEGV | SignalFlags::SIGILL | 
+                SignalFlags::SIGABRT | SignalFlags::SIGIOT | SignalFlags::SIGQUIT | SignalFlags::SIGTERM |
+                SignalFlags::SIGHUP | SignalFlags::SIGINT | SignalFlags::SIGPIPE |
+                SignalFlags::SIGALRM | SignalFlags::SIGFPE | SignalFlags::SIGBUS |
+                SignalFlags::SIGTRAP | SignalFlags::SIGXCPU | SignalFlags::SIGXFSZ |
+                SignalFlags::SIGVTALRM | SignalFlags::SIGPROF | SignalFlags::SIGUSR1 |
+                SignalFlags::SIGUSR2 => {
+                    if signal == SignalFlags::SIGSEGV {  
+                        warn!("SIGNAL_DEBUG: SIGSEGV default exit - this indicates memory access failure");  
+                        warn!("SIGNAL_DEBUG: Check if gap region allocation was successful but mapping failed");  
+                    } else if signal == SignalFlags::SIGABRT || signal == SignalFlags::SIGIOT {
+                        debug!("SIGABRT/SIGIOT received, terminating process as expected for abort()");
+                    }
                     current_user_task().exit_with_signal(signal.num());
                 }
-                SignalFlags::SIGTIMER => {
-                    // SIGTIMER 的默认行为应该是忽略
-                    warn!("SIGTIMER signal with no handler, ignoring");
+                // 这些信号的默认行为是忽略
+                SignalFlags::SIGTIMER | SignalFlags::SIGCHLD | SignalFlags::SIGURG |
+                SignalFlags::SIGWINCH | SignalFlags::SIGIO | SignalFlags::SIGPWR => {
+                    debug!("Signal {:?} ignored by default handler", signal);
                     return;
                 }
-                _ => {}
+                // SIGSTOP和SIGTSTP的默认行为是暂停进程，但我们目前不支持进程暂停
+                SignalFlags::SIGSTOP | SignalFlags::SIGTSTP | SignalFlags::SIGTTIN | SignalFlags::SIGTTOU => {
+                    debug!("Stop signal {:?} received, but process suspension not implemented, ignoring", signal);
+                    return;
+                }
+                // SIGCONT的默认行为是继续执行暂停的进程
+                SignalFlags::SIGCONT => {
+                    debug!("SIGCONT received, continuing process execution");
+                    return;
+                }
+                _ => {
+                    warn!("Unknown signal {:?} with default handler, ignoring", signal);
+                }
             }
             return;
         }
@@ -142,8 +164,14 @@ if signal == SignalFlags::SIGSEGV {
         // alloc space for SignalUserContext at stack and align with 16 bytes.
         let sp = (cx_ref[TrapFrameArgs::SP] - 128 - size_of::<SignalUserContext>()) / 16 * 16;
 
-        if sp < 0x2_0000_0000 || sp >= cx_ref[TrapFrameArgs::SP] {
-            warn!("Invalid signal stack pointer: {:#x}", sp);
+        // 修复栈指针验证逻辑：使用正确的用户栈范围
+        // 用户栈在 0x8000_0000 附近，向下增长
+        let stack_bottom = 0x7000_0000; // 用户栈底部
+        let stack_top = cx_ref[TrapFrameArgs::SP]; // 当前栈顶
+        
+        if sp < stack_bottom || sp >= stack_top {
+            warn!("Invalid signal stack pointer: {:#x}, valid range: {:#x}-{:#x}", 
+                  sp, stack_bottom, stack_top);
             return;
         }
 

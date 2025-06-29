@@ -38,5 +38,7 @@ impl DerefMut for FileTable {
 pub fn rlimits_new() -> Vec<usize> {
     let mut rlimits = vec![0usize; 8];
     rlimits[7] = FILE_MAX;
+    // 为RLIMIT_CORE设置默认值（无限制）- 对LTP测试框架很重要
+    rlimits[4] = usize::MAX; // RLIMIT_CORE: 允许无限制的core文件
     rlimits
 }

@@ -5,11 +5,17 @@ extern crate alloc;
 mod interrupts;
 mod meminfo;
 mod mounts;
+mod version;
+mod stat;
+mod cpuinfo;
 
 use alloc::{collections::BTreeMap, string::ToString, sync::Arc, vec::Vec};
 use interrupts::Interrupts;
 use meminfo::MemInfo;
 use mounts::Mounts;
+use version::Version;
+use stat::Stat as ProcStat;
+use cpuinfo::CpuInfo;
 use syscalls::Errno;
 use vfscore::{DirEntry, FileSystem, FileType, INodeInterface, StatMode, VfsResult};
 
@@ -47,6 +53,9 @@ impl ProcDir {
         map.insert("mounts", Arc::new(Mounts::new()));
         map.insert("meminfo", Arc::new(MemInfo::new()));
         map.insert("interrupts", Arc::new(Interrupts::new()));
+        map.insert("version", Arc::new(Version::new()));
+        map.insert("stat", Arc::new(ProcStat::new()));
+        map.insert("cpuinfo", Arc::new(CpuInfo::new()));
         Arc::new(ProcDir { map })
     }
 }

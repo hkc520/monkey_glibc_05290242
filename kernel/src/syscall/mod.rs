@@ -13,7 +13,7 @@ pub use socket::NET_SERVER;
 use syscalls::{Errno, Sysno};
 
 use log::warn;
-use types::fd::AT_CWD;
+// use types::fd::AT_CWD;
 
 use crate::user::UserTaskContainer;
 
@@ -39,6 +39,39 @@ impl UserTaskContainer {
             Sysno::umask => self.sys_umask(args[0]).await,
             Sysno::fchmodat => {
                 self.sys_fchmodat(args[0] as _, args[1].into(), args[2] as _, args[3] as _)
+                    .await
+            }
+            #[cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "mips", target_arch = "mips64", target_arch = "powerpc", target_arch = "powerpc64", target_arch = "sparc", target_arch = "sparc64", target_arch = "s390x", target_arch = "arm"))]
+            Sysno::chown => {
+                self.sys_chown(args[0].into(), args[1] as _, args[2] as _)
+                    .await
+            }
+            Sysno::fchown => {
+                self.sys_fchown(args[0] as _, args[1] as _, args[2] as _)
+                    .await
+            }
+            #[cfg(any(target_arch = "x86_64", target_arch = "x86", target_arch = "mips", target_arch = "mips64", target_arch = "powerpc", target_arch = "powerpc64", target_arch = "sparc", target_arch = "sparc64", target_arch = "s390x", target_arch = "arm"))]
+            Sysno::lchown => {
+                self.sys_lchown(args[0].into(), args[1] as _, args[2] as _)
+                    .await
+            }
+            Sysno::fchownat => {
+                self.sys_fchownat(args[0] as _, args[1].into(), args[2] as _, args[3] as _, args[4] as _)
+                    .await
+            }
+            #[cfg(any(target_arch = "x86", target_arch = "arm", target_arch = "powerpc", target_arch = "sparc"))]
+            Sysno::chown32 => {
+                self.sys_chown(args[0].into(), args[1] as _, args[2] as _)
+                    .await
+            }
+            #[cfg(any(target_arch = "x86", target_arch = "arm", target_arch = "powerpc", target_arch = "sparc"))]
+            Sysno::fchown32 => {
+                self.sys_fchown(args[0] as _, args[1] as _, args[2] as _)
+                    .await
+            }
+            #[cfg(any(target_arch = "x86", target_arch = "arm", target_arch = "powerpc", target_arch = "sparc"))]
+            Sysno::lchown32 => {
+                self.sys_lchown(args[0].into(), args[1] as _, args[2] as _)
                     .await
             }
             Sysno::read => {
@@ -71,6 +104,10 @@ impl UserTaskContainer {
             }
             Sysno::symlinkat => {
                 self.sys_symlinkat(args[0].into(), args[1] as _, args[2].into())
+                    .await
+            }
+            Sysno::linkat => {
+                self.sys_linkat(args[0] as _, args[1].into(), args[2] as _, args[3].into(), args[4] as _)
                     .await
             }
             Sysno::fstat => self.sys_fstat(args[0] as _, args[1].into()).await,
@@ -236,7 +273,9 @@ impl UserTaskContainer {
                 .await
             }
             Sysno::kill => self.sys_kill(args[0] as _, args[1] as _).await,
-            Sysno::fsync => Ok(0),
+            Sysno::fsync => self.sys_fsync(args[0] as _).await,
+            Sysno::fdatasync => self.sys_fdatasync(args[0] as _).await,
+            Sysno::flock => self.sys_flock(args[0] as _, args[1] as _).await,
             Sysno::faccessat => {
                 self.sys_faccess_at(args[0] as _, args[1].into(), args[2], args[3])
                     .await
@@ -296,6 +335,9 @@ impl UserTaskContainer {
             Sysno::sysinfo => self.sys_info(args[0].into()).await,
             Sysno::msync => self.sys_msync(args[0], args[1], args[2] as _).await,
             Sysno::exit_group => self.sys_exit_group(args[0]),
+            Sysno::truncate => self.sys_truncate(args[0].into(), args[1] as _).await,
+            Sysno::setuid => self.sys_setuid(args[0] as _).await,
+            Sysno::setgid => self.sys_setgid(args[0] as _).await,
             Sysno::ftruncate => self.sys_ftruncate(args[0], args[1]).await,
             Sysno::shmget => {
                 self.sys_shmget(args[0] as _, args[1] as _, args[2] as _)
@@ -307,6 +349,22 @@ impl UserTaskContainer {
             }
             Sysno::shmctl => {
                 self.sys_shmctl(args[0] as _, args[1] as _, args[2] as _)
+                    .await
+            }
+            Sysno::msgget => {
+                self.sys_msgget(args[0] as _, args[1] as _)
+                    .await
+            }
+            Sysno::msgctl => {
+                self.sys_msgctl(args[0] as _, args[1] as _, args[2] as _)
+                    .await
+            }
+            Sysno::msgrcv => {
+                self.sys_msgrcv(args[0] as _, args[1] as _, args[2] as _, args[3] as i64, args[4] as _)
+                    .await
+            }
+            Sysno::msgsnd => {
+                self.sys_msgsnd(args[0] as _, args[1] as _, args[2] as _, args[3] as _)
                     .await
             }
             Sysno::semget => {
@@ -503,7 +561,8 @@ impl UserTaskContainer {
             #[cfg(target_arch = "x86_64")]
             Sysno::dup2 => self.sys_dup2(args[0], args[1]).await,
             #[cfg(target_arch = "x86_64")]
-            Sysno::sync | Sysno::access => Ok(0),
+            Sysno::sync => self.sys_sync().await,
+
             Sysno::membarrier => {
                 self.sys_membarrier(args[0] as _, args[1] as _, args[2] as _)
                                           .await

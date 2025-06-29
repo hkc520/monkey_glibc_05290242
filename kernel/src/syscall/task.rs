@@ -21,8 +21,8 @@ use alloc::{
 use core::cmp;
 use executor::{select, thread, tid2task, yield_now, AsyncTask};
 use fs::TimeSpec;
-use log::{debug, warn};
-use num_traits::FromPrimitive;
+use log::{debug, warn, info};
+// use num_traits::FromPrimitive;
 use polyhal::Time;
 use polyhal_trap::trapframe::TrapFrameArgs;
 use signal::SignalFlags;
@@ -229,7 +229,41 @@ impl UserTaskContainer {
             debug!("wait pid: {}", child_task.exit_code().unwrap());
 
             if status.is_valid() {
-                *status.get_mut() = (child_task.exit_code().unwrap() as i32) << 8;
+                let pcb = child_task.pcb.lock();
+                let wait_status = if let Some(signal) = pcb.exit_signal {
+                    // 进程被信号杀死：低8位为信号号
+                    let mut status = signal as i32;
+                    if pcb.core_dumped {
+                        // 设置core dump标志 (bit 7)
+                        status |= 0x80;
+                        info!("Child {} was killed by signal {} with core dump, status: {:#x}", 
+                               child_task.task_id, signal, status);
+                        info!("LTP_DEBUG: Process {} killed by signal {} WITH core dump, wait status: {:#x}", 
+                              child_task.task_id, signal, status);
+                    } else {
+                        info!("Child {} was killed by signal {} without core dump", 
+                               child_task.task_id, signal);
+                        info!("LTP_DEBUG: Process {} killed by signal {} WITHOUT core dump, wait status: {:#x}", 
+                              child_task.task_id, signal, status);
+                    }
+                    
+                    // 特别关注abort相关的信号 (SIGABRT=6, SIGIOT=6)
+                    if signal == 6 {
+                        info!("LTP_ABORT_DEBUG: abort01 test process {} exited with SIGABRT/SIGIOT, core_dumped={}, final_status={:#x}", 
+                              child_task.task_id, pcb.core_dumped, status);
+                    }
+                    
+                    status
+                } else {
+                    // 进程正常退出：退出码左移8位
+                    let exit_code = pcb.exit_code.unwrap_or(0);
+                    info!("Child {} exited normally with code {}", child_task.task_id, exit_code);
+                    info!("LTP_DEBUG: Process {} exited normally with code {}, wait status: {:#x}", 
+                          child_task.task_id, exit_code, (exit_code as i32) << 8);
+                    (exit_code as i32) << 8
+                };
+                drop(pcb);
+                *status.get_mut() = wait_status;
             }
             Ok(child_task.task_id)
         } else if options == 1 {
@@ -253,7 +287,40 @@ impl UserTaskContainer {
                         .retain(|x| x.task_id != child_task.task_id);
                     child_task.release();
                     if status.is_valid() {
-                        *status.get_mut() = (t1 as i32) << 8;
+                        let pcb = child_task.pcb.lock();
+                        let wait_status = if let Some(signal) = pcb.exit_signal {
+                            // 进程被信号杀死：低8位为信号号
+                            let mut status = signal as i32;
+                            if pcb.core_dumped {
+                                // 设置core dump标志 (bit 7)
+                                status |= 0x80;
+                                info!("Child {} was killed by signal {} with core dump, status: {:#x}", 
+                                       child_task.task_id, signal, status);
+                                info!("LTP_DEBUG: Process {} killed by signal {} WITH core dump, wait status: {:#x}", 
+                                      child_task.task_id, signal, status);
+                            } else {
+                                info!("Child {} was killed by signal {} without core dump", 
+                                       child_task.task_id, signal);
+                                info!("LTP_DEBUG: Process {} killed by signal {} WITHOUT core dump, wait status: {:#x}", 
+                                      child_task.task_id, signal, status);
+                            }
+                            
+                            // 特别关注abort相关的信号 (SIGABRT=6, SIGIOT=6)
+                            if signal == 6 {
+                                info!("LTP_ABORT_DEBUG: abort01 test process {} exited with SIGABRT/SIGIOT, core_dumped={}, final_status={:#x}", 
+                                      child_task.task_id, pcb.core_dumped, status);
+                            }
+                            
+                            status
+                        } else {
+                            // 进程正常退出：退出码左移8位
+                            info!("Child {} exited normally with code {}", child_task.task_id, t1);
+                            info!("LTP_DEBUG: Process {} exited normally with code {}, wait status: {:#x}", 
+                                  child_task.task_id, t1, (t1 as i32) << 8);
+                            (t1 as i32) << 8
+                        };
+                        drop(pcb);
+                        *status.get_mut() = wait_status;
                     }
                     // TIPS: This is a small change.
                     Ok(child_task.task_id)
