@@ -506,6 +506,28 @@ pub async fn initproc() {
         command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
 
         //command("/musl/busybox sh ", glibc_home_dir.clone()).await;
+
+        // 为LTP测试准备环境
+        command("/glibc/busybox echo #### OS COMP TEST GROUP START ltp-glibc ####", glibc_home_dir.clone()).await;
+        
+        // 确保LTP测试需要的目录存在并有正确权限
+        command("/glibc/busybox mkdir -p /tmp", glibc_home_dir.clone()).await;
+        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
+        command("/glibc/busybox chmod 1777 /tmp", glibc_home_dir.clone()).await;
+        command("/glibc/busybox chmod 1777 /var/tmp", glibc_home_dir.clone()).await;
+        
+        // 创建一些LTP测试可能需要的基础文件
+        command("/glibc/busybox touch /tmp/.test_marker", glibc_home_dir.clone()).await;
+        command("/glibc/busybox rm -f /tmp/.test_marker", glibc_home_dir.clone()).await;
+        
+        command("/glibc/busybox sh ", glibc_home_dir.clone()).await;
+        command("/glibc/busybox sh ltp_testcode.sh", glibc_home_dir.clone()).await;
+        
+        command("/glibc/busybox echo #### OS COMP TEST GROUP END ltp-glibc ####", glibc_home_dir.clone()).await;
+
+
+
+
         // 使用专门的iperf测试函数，包含增强的隔离机制 (glibc)
         command_iperf(
             "/glibc/busybox sh iperf_testcode.sh",

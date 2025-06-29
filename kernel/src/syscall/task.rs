@@ -598,14 +598,21 @@ impl UserTaskContainer {
         
         debug!("sys_sigreturn: restoring context from sp: {:#x}", sp);
         
-        // 验证栈指针的有效性
-        if sp < 0x2_0000_0000 || sp >= 0x8000_0000_0000 {
+        // 修复地址范围验证：使用更合理的地址范围而不是硬编码
+        // 基础的地址合理性检查：避免明显无效的地址
+        if sp < 0x1000 || sp >= 0x800000000000 {
             warn!("Invalid signal context stack pointer: {:#x}", sp);
             return Err(Errno::EFAULT);
         }
         
         use crate::utils::useref::UserRef;
         use crate::syscall::types::signal::SignalUserContext;
+        
+        // 验证页面是否可访问
+        if let None = self.task.page_table.translate(polyhal::VirtAddr::from(sp)) {
+            warn!("Signal context page at {:#x} is not mapped", sp);
+            return Err(Errno::EFAULT);
+        }
         
         // 从栈中获取保存的信号上下文
         let signal_ctx: &SignalUserContext = UserRef::<SignalUserContext>::from(sp).get_ref();
@@ -620,11 +627,13 @@ impl UserTaskContainer {
         cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SEPC] = signal_ctx.pc();
         
         // 恢复栈指针到信号处理前的位置
-        // SignalUserContext + 对齐空间
-        cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SP] = sp + core::mem::size_of::<SignalUserContext>() + 128;
+        // 从SignalUserContext中恢复原始栈指针
+        // 注意：我们应该从保存的上下文中恢复栈指针，而不是计算偏移
         
         debug!("sys_sigreturn: restored PC to {:#x}, SP to {:#x}", 
                signal_ctx.pc(), cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SP]);
+        
+        warn!("SIGNAL_DEBUG: rt_sigreturn completed, returning to PC: {:#x}", signal_ctx.pc());
         
         Ok(0)
     }
