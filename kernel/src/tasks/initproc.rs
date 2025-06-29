@@ -230,6 +230,255 @@ async fn command_iperf(cmd: &str, work_dir: PathBuf) {
 pub async fn initproc() {
     #[cfg(not(target_arch = "loongarch64"))]
     {
+        
+        set_libc_path("/glibc/lib".to_string());
+        set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
+        let glibc_home_dir = PathBuf::from("/glibc/basic");
+        // 为glibc环境创建链接
+        command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /bin/sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
+        command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
+        //command("/musl/busybox sh", glibc_home_dir.clone()).await;
+        // command(
+        //     "/glibc/busybox sh /glibc/iozone_testcode.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox sh /glibc/basic/run-all.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
+            glibc_home_dir.clone().clone(),
+        )
+        .await;
+
+        let glibc_home_dir = PathBuf::from("/glibc");
+        // 确保glibc目录也有正确的链接
+        command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox cp /glibc/busybox /bin/sleep",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
+        command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
+
+        //command("/musl/busybox sh ", glibc_home_dir.clone()).await;
+
+        // 为LTP测试准备环境
+        command("/glibc/busybox echo #### OS COMP TEST GROUP START ltp-glibc ####", glibc_home_dir.clone()).await;
+        
+        // 确保LTP测试需要的目录存在并有正确权限
+        command("/glibc/busybox mkdir -p /tmp", glibc_home_dir.clone()).await;
+        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
+        command("/glibc/busybox chmod 1777 /tmp", glibc_home_dir.clone()).await;
+        command("/glibc/busybox chmod 1777 /var/tmp", glibc_home_dir.clone()).await;
+        
+        // 创建一些LTP测试可能需要的基础文件
+        command("/glibc/busybox touch /tmp/.test_marker", glibc_home_dir.clone()).await;
+        command("/glibc/busybox rm -f /tmp/.test_marker", glibc_home_dir.clone()).await;
+        
+        command("/glibc/busybox sh ", glibc_home_dir.clone()).await;
+        command("/glibc/busybox sh ltp_testcode.sh", glibc_home_dir.clone()).await;
+        
+        command("/glibc/busybox echo #### OS COMP TEST GROUP END ltp-glibc ####", glibc_home_dir.clone()).await;
+
+
+
+
+        // 使用专门的iperf测试函数，包含增强的隔离机制 (glibc)
+        command_iperf(
+            "/glibc/busybox sh iperf_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+    command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP START lmbench-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        command(
+            "/glibc/busybox echo latency measurements",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all lat_syscall -P 1 null",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all lat_syscall -P 1 read",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all lat_syscall -P 1 write",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox touch /var/tmp/lmbench",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        command(
+            "/glibc/lmbench_all lat_syscall -P 1 stat /var/tmp/lmbench",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all lat_syscall -P 1 fstat /var/tmp/lmbench",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all lat_syscall -P 1 open /var/tmp/lmbench",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        command(
+            "/glibc/lmbench_all lat_select -n 100 -P 1 file",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        // command(
+        //     "/glibc/lmbench_all lat_sig -P 1 install",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+        // // command(
+        // //     "/glibc/lmbench_all lat_sig -P 1 catch",
+        // //     glibc_home_dir.clone(),
+        // // )
+        // // .await;
+        // command(
+        //     "/glibc/lmbench_all lat_sig -P 1 prot lat_sig",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
+
+        command("/glibc/lmbench_all lat_pipe -P 1", glibc_home_dir.clone()).await;
+
+        command(
+            "/glibc/lmbench_all lat_proc -P 1 fork",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        // //command("/glibc/lmbench_all lat_proc -P 1 exec", glibc_home_dir.clone()).await;
+
+        command("/glibc/busybox cp hello /tmp", glibc_home_dir.clone()).await;
+        //command("/glibc/lmbench_all lat_proc -P 1 shell", glibc_home_dir.clone()).await;
+
+        // 先创建目录
+        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
+
+        // 现在使用改进的command函数，可以正确处理引号
+        command("/glibc/lmbench_all lmdd label=\"File /var/tmp/XXX write bandwidth:\" of=/var/tmp/XXX move=1m fsync=1 print=3", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/lmbench_all lat_pagefault -P 1 /var/tmp/XXX",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all lat_mmap -P 1 512k /var/tmp/XXX",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        command(
+            "/glibc/busybox echo file system latency",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command("/glibc/lmbench_all lat_fs /var/tmp", glibc_home_dir.clone()).await;
+
+        command(
+            "/glibc/busybox echo Bandwidth measurements",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command("/glibc/lmbench_all bw_pipe -P 1", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/lmbench_all bw_file_rd -P 1 512k io_only /var/tmp/XXX",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all bw_file_rd -P 1 512k open2close /var/tmp/XXX",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all bw_mmap_rd -P 1 512k mmap_only /var/tmp/XXX",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all bw_mmap_rd -P 1 512k open2close /var/tmp/XXX",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        command(
+            "/glibc/busybox echo context switch overhead",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all lat_ctx -P 1 -s 32 2 4 8 16 24 32 64 96",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        command(
+            "/glibc/busybox echo #### OS COMP TEST GROUP END lmbench-glibc ####",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        //command("/glibc/busybox sh lmbench_testcode.sh", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/busybox sh /glibc/libcbench_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox sh busybox_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        
+
         set_libc_path("/musl/lib/libc.so".to_string());
         set_dyn_path("/musl/lib/libc.so".to_string());
         //set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
@@ -296,23 +545,23 @@ pub async fn initproc() {
         .await;
         let home_dir = PathBuf::from("/musl");
         
-        // 为LTP测试准备环境
-        command("/musl/busybox echo #### OS COMP TEST GROUP START ltp-musl ####", home_dir.clone()).await;
+        // // 为LTP测试准备环境
+        // command("/musl/busybox echo #### OS COMP TEST GROUP START ltp-musl ####", home_dir.clone()).await;
         
-        // 确保LTP测试需要的目录存在并有正确权限
-        command("/musl/busybox mkdir -p /tmp", home_dir.clone()).await;
-        command("/musl/busybox mkdir -p /var/tmp", home_dir.clone()).await;
-        command("/musl/busybox chmod 1777 /tmp", home_dir.clone()).await;
-        command("/musl/busybox chmod 1777 /var/tmp", home_dir.clone()).await;
+        // // 确保LTP测试需要的目录存在并有正确权限
+        // command("/musl/busybox mkdir -p /tmp", home_dir.clone()).await;
+        // command("/musl/busybox mkdir -p /var/tmp", home_dir.clone()).await;
+        // command("/musl/busybox chmod 1777 /tmp", home_dir.clone()).await;
+        // command("/musl/busybox chmod 1777 /var/tmp", home_dir.clone()).await;
         
-        // 创建一些LTP测试可能需要的基础文件
-        command("/musl/busybox touch /tmp/.test_marker", home_dir.clone()).await;
-        command("/musl/busybox rm -f /tmp/.test_marker", home_dir.clone()).await;
+        // // 创建一些LTP测试可能需要的基础文件
+        // command("/musl/busybox touch /tmp/.test_marker", home_dir.clone()).await;
+        // command("/musl/busybox rm -f /tmp/.test_marker", home_dir.clone()).await;
         
-        command("/musl/busybox sh ", home_dir.clone()).await;
-        command("/musl/busybox sh ltp_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh ", home_dir.clone()).await;
+        // command("/musl/busybox sh ltp_testcode.sh", home_dir.clone()).await;
         
-        command("/musl/busybox echo #### OS COMP TEST GROUP END ltp-musl ####", home_dir.clone()).await;
+        // command("/musl/busybox echo #### OS COMP TEST GROUP END ltp-musl ####", home_dir.clone()).await;
 
         // 使用专门的iperf测试函数，包含增强的隔离机制
         //command_iperf("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
@@ -450,252 +699,6 @@ pub async fn initproc() {
             home_dir.clone().clone(),
         )
         .await;
-        set_libc_path("/glibc/lib".to_string());
-        set_dyn_path("/glibc/lib/ld-linux-riscv64-lp64d.so.1".to_string());
-        let glibc_home_dir = PathBuf::from("/glibc/basic");
-        // 为glibc环境创建链接
-        command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox cp /glibc/busybox /sleep",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox cp /glibc/busybox /bin/sleep",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
-        command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
-        //command("/musl/busybox sh", glibc_home_dir.clone()).await;
-        // command(
-        //     "/glibc/busybox sh /glibc/iozone_testcode.sh",
-        //     glibc_home_dir.clone(),
-        // )
-        // .await;
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP START basic-glibc ####",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox sh /glibc/basic/run-all.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP END basic-glibc ####",
-            glibc_home_dir.clone().clone(),
-        )
-        .await;
-
-        let glibc_home_dir = PathBuf::from("/glibc");
-        // 确保glibc目录也有正确的链接
-        command("/glibc/busybox mkdir -p /bin", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox cp /glibc/busybox /sleep",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox cp /glibc/busybox /bin/sleep",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/busybox chmod +x /sleep", glibc_home_dir.clone()).await;
-        command("/glibc/busybox chmod +x /bin/sleep", glibc_home_dir.clone()).await;
-
-        //command("/musl/busybox sh ", glibc_home_dir.clone()).await;
-
-        // 为LTP测试准备环境
-        command("/glibc/busybox echo #### OS COMP TEST GROUP START ltp-glibc ####", glibc_home_dir.clone()).await;
-        
-        // 确保LTP测试需要的目录存在并有正确权限
-        command("/glibc/busybox mkdir -p /tmp", glibc_home_dir.clone()).await;
-        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
-        command("/glibc/busybox chmod 1777 /tmp", glibc_home_dir.clone()).await;
-        command("/glibc/busybox chmod 1777 /var/tmp", glibc_home_dir.clone()).await;
-        
-        // 创建一些LTP测试可能需要的基础文件
-        command("/glibc/busybox touch /tmp/.test_marker", glibc_home_dir.clone()).await;
-        command("/glibc/busybox rm -f /tmp/.test_marker", glibc_home_dir.clone()).await;
-        
-        command("/glibc/busybox sh ", glibc_home_dir.clone()).await;
-        command("/glibc/busybox sh ltp_testcode.sh", glibc_home_dir.clone()).await;
-        
-        command("/glibc/busybox echo #### OS COMP TEST GROUP END ltp-glibc ####", glibc_home_dir.clone()).await;
-
-
-
-
-        // 使用专门的iperf测试函数，包含增强的隔离机制 (glibc)
-        command_iperf(
-            "/glibc/busybox sh iperf_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP START lmbench-glibc ####",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command(
-            "/glibc/busybox echo latency measurements",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_syscall -P 1 null",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_syscall -P 1 read",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_syscall -P 1 write",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox touch /var/tmp/lmbench",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command(
-            "/glibc/lmbench_all lat_syscall -P 1 stat /var/tmp/lmbench",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_syscall -P 1 fstat /var/tmp/lmbench",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_syscall -P 1 open /var/tmp/lmbench",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command(
-            "/glibc/lmbench_all lat_select -n 100 -P 1 file",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command(
-            "/glibc/lmbench_all lat_sig -P 1 install",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_sig -P 1 catch",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_sig -P 1 prot lat_sig",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command("/glibc/lmbench_all lat_pipe -P 1", glibc_home_dir.clone()).await;
-
-        command(
-            "/glibc/lmbench_all lat_proc -P 1 fork",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        // //command("/glibc/lmbench_all lat_proc -P 1 exec", glibc_home_dir.clone()).await;
-
-        command("/glibc/busybox cp hello /tmp", glibc_home_dir.clone()).await;
-        //command("/glibc/lmbench_all lat_proc -P 1 shell", glibc_home_dir.clone()).await;
-
-        // 先创建目录
-        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
-
-        // 现在使用改进的command函数，可以正确处理引号
-        command("/glibc/lmbench_all lmdd label=\"File /var/tmp/XXX write bandwidth:\" of=/var/tmp/XXX move=1m fsync=1 print=3", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/lmbench_all lat_pagefault -P 1 /var/tmp/XXX",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_mmap -P 1 512k /var/tmp/XXX",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command(
-            "/glibc/busybox echo file system latency",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/lmbench_all lat_fs /var/tmp", glibc_home_dir.clone()).await;
-
-        command(
-            "/glibc/busybox echo Bandwidth measurements",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/lmbench_all bw_pipe -P 1", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/lmbench_all bw_file_rd -P 1 512k io_only /var/tmp/XXX",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all bw_file_rd -P 1 512k open2close /var/tmp/XXX",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all bw_mmap_rd -P 1 512k mmap_only /var/tmp/XXX",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all bw_mmap_rd -P 1 512k open2close /var/tmp/XXX",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command(
-            "/glibc/busybox echo context switch overhead",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_ctx -P 1 -s 32 2 4 8 16 24 32 64 96",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command(
-            "/glibc/busybox echo #### OS COMP TEST GROUP END lmbench-glibc ####",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        //command("/glibc/busybox sh lmbench_testcode.sh", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox sh /glibc/libcbench_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox sh busybox_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
 
         //command("/musl/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
         //command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
@@ -774,37 +777,37 @@ pub async fn initproc() {
         //let home_dir = PathBuf::from("/musl");
         let home_dir = PathBuf::from("/musl");
 
-        // 为LTP测试准备环境 (LoongArch64)
-        command("/musl/busybox echo #### OS COMP TEST GROUP START ltp-musl ####", home_dir.clone()).await;
+        // // 为LTP测试准备环境 (LoongArch64)
+        // command("/musl/busybox echo #### OS COMP TEST GROUP START ltp-musl ####", home_dir.clone()).await;
         
-        // 确保LTP测试需要的目录存在并有正确权限
-        command("/musl/busybox mkdir -p /tmp", home_dir.clone()).await;
-        command("/musl/busybox mkdir -p /var/tmp", home_dir.clone()).await;
-        command("/musl/busybox chmod 1777 /tmp", home_dir.clone()).await;
-        command("/musl/busybox chmod 1777 /var/tmp", home_dir.clone()).await;
+        // // 确保LTP测试需要的目录存在并有正确权限
+        // command("/musl/busybox mkdir -p /tmp", home_dir.clone()).await;
+        // command("/musl/busybox mkdir -p /var/tmp", home_dir.clone()).await;
+        // command("/musl/busybox chmod 1777 /tmp", home_dir.clone()).await;
+        // command("/musl/busybox chmod 1777 /var/tmp", home_dir.clone()).await;
         
-        // 创建一些LTP测试可能需要的基础文件
-        command("/musl/busybox touch /tmp/.test_marker", home_dir.clone()).await;
-        command("/musl/busybox rm -f /tmp/.test_marker", home_dir.clone()).await;
+        // // 创建一些LTP测试可能需要的基础文件
+        // command("/musl/busybox touch /tmp/.test_marker", home_dir.clone()).await;
+        // command("/musl/busybox rm -f /tmp/.test_marker", home_dir.clone()).await;
 
-        //command("/musl/busybox sh ", home_dir.clone()).await;
-        command("/musl/busybox sh ltp_testcode.sh", home_dir.clone()).await;
+        // //command("/musl/busybox sh ", home_dir.clone()).await;
+        // //command("/musl/busybox sh ltp_testcode.sh", home_dir.clone()).await;
         
-        command("/musl/busybox echo #### OS COMP TEST GROUP END ltp-musl ####", home_dir.clone()).await;
+        // command("/musl/busybox echo #### OS COMP TEST GROUP END ltp-musl ####", home_dir.clone()).await;
 
-        // 使用专门的iperf测试函数，包含增强的隔离机制 (loongarch64)
-        command_iperf("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
-        command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
+        // // 使用专门的iperf测试函数，包含增强的隔离机制 (loongarch64)
+        // command_iperf("/musl/busybox sh iperf_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh lmbench_testcode.sh", home_dir.clone()).await;
 
-        command(
-            "/musl/busybox sh /musl/iozone_testcode.sh",
-            home_dir.clone(),
-        )
-        .await;
-        command("/musl/busybox sh libcbench_testcode.sh", home_dir.clone()).await;
-        command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
-        command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
-        //command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
+        // command(
+        //     "/musl/busybox sh /musl/iozone_testcode.sh",
+        //     home_dir.clone(),
+        // )
+        // .await;
+        // command("/musl/busybox sh libcbench_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
+        // command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
+        // //command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP START libctest-musl ####",
             home_dir.clone(),
@@ -953,6 +956,30 @@ pub async fn initproc() {
                 "/musl/runtest.exe",
                 "entry-dynamic.exe",
                 "pthread_rwlock_ebusy",
+                home_dir.clone(),
+            ),
+             (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "sem_init",
+                home_dir.clone(),
+            ),
+             (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "tls_init",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "tls_local_exec",
+                home_dir.clone(),
+            ),
+            (
+                "/musl/runtest.exe",
+                "entry-dynamic.exe",
+                "tls_get_new_dtv",
                 home_dir.clone(),
             ),
         ];
