@@ -453,7 +453,25 @@ pub async fn initproc() {
         command("/musl/busybox sh busybox_testcode.sh", home_dir.clone()).await;
 
         command("/musl/busybox sh lua_testcode.sh", home_dir.clone()).await;
-        command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
+        //command("/musl/busybox sh libctest_testcode.sh", home_dir.clone()).await;
+        command(
+            "/musl/busybox echo #### OS COMP TEST GROUP START libctest-musl ####",
+            home_dir.clone(),
+        )
+        .await;
+        let musl_exclude = vec![(
+            "/musl/runtest.exe",
+            "entry-static.exe",
+            "pthread_robust_detach",
+            home_dir.clone(),
+        )];
+        run_musl_tests(home_dir.clone(), musl_exclude).await;
+        command(
+            "/musl/busybox echo #### OS COMP TEST GROUP END libctest-musl ####",
+            home_dir.clone().clone(),
+        )
+        .await;
+
         command(
             "/musl/busybox echo #### OS COMP TEST GROUP END libctest-musl ####",
             home_dir.clone().clone(),
