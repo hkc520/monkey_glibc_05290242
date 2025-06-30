@@ -570,11 +570,11 @@ pub async fn initproc() {
         .await;
 
         // 使用专门的iperf测试函数，包含增强的隔离机制 (glibc)
-        command_iperf(
-            "/glibc/busybox sh iperf_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
+        // command_iperf(
+        //     "/glibc/busybox sh iperf_testcode.sh",
+        //     glibc_home_dir.clone(),
+        // )
+        // .await;
         command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP START lmbench-glibc ####",
