@@ -576,6 +576,16 @@ pub async fn initproc() {
         // )
         // .await;
         command("/glibc/busybox sh lua_testcode.sh", glibc_home_dir.clone()).await;
+                command(
+            "/glibc/busybox sh /glibc/libcbench_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/busybox sh busybox_testcode.sh",
+            glibc_home_dir.clone(),
+        )
+        .await;
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP START lmbench-glibc ####",
             glibc_home_dir.clone(),
@@ -655,35 +665,7 @@ pub async fn initproc() {
             glibc_home_dir.clone(),
         )
         .await;
-        // //command("/glibc/lmbench_all lat_proc -P 1 exec", glibc_home_dir.clone()).await;
-
-        command("/glibc/busybox cp hello /tmp", glibc_home_dir.clone()).await;
-        //command("/glibc/lmbench_all lat_proc -P 1 shell", glibc_home_dir.clone()).await;
-
-        // 先创建目录
-        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
-
-        // 现在使用改进的command函数，可以正确处理引号
-        command("/glibc/lmbench_all lmdd label=\"File /var/tmp/XXX write bandwidth:\" of=/var/tmp/XXX move=1m fsync=1 print=3", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/lmbench_all lat_pagefault -P 1 /var/tmp/XXX",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/lmbench_all lat_mmap -P 1 512k /var/tmp/XXX",
-            glibc_home_dir.clone(),
-        )
-        .await;
-
-        command(
-            "/glibc/busybox echo file system latency",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command("/glibc/lmbench_all lat_fs /var/tmp", glibc_home_dir.clone()).await;
-
-        command(
+     command(
             "/glibc/busybox echo Bandwidth measurements",
             glibc_home_dir.clone(),
         )
@@ -721,22 +703,42 @@ pub async fn initproc() {
         )
         .await;
 
+        // //command("/glibc/lmbench_all lat_proc -P 1 exec", glibc_home_dir.clone()).await;
+
+        command("/glibc/busybox cp hello /tmp", glibc_home_dir.clone()).await;
+        //command("/glibc/lmbench_all lat_proc -P 1 shell", glibc_home_dir.clone()).await;
+
+        // 先创建目录
+        command("/glibc/busybox mkdir -p /var/tmp", glibc_home_dir.clone()).await;
+
+        // 现在使用改进的command函数，可以正确处理引号
+        command("/glibc/lmbench_all lmdd label=\"File /var/tmp/XXX write bandwidth:\" of=/var/tmp/XXX move=1m fsync=1 print=3", glibc_home_dir.clone()).await;
+        command(
+            "/glibc/lmbench_all lat_pagefault -P 1 /var/tmp/XXX",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command(
+            "/glibc/lmbench_all lat_mmap -P 1 512k /var/tmp/XXX",
+            glibc_home_dir.clone(),
+        )
+        .await;
+
+        command(
+            "/glibc/busybox echo file system latency",
+            glibc_home_dir.clone(),
+        )
+        .await;
+        command("/glibc/lmbench_all lat_fs /var/tmp", glibc_home_dir.clone()).await;
+
+       
         command(
             "/glibc/busybox echo #### OS COMP TEST GROUP END lmbench-glibc ####",
             glibc_home_dir.clone(),
         )
         .await;
         //command("/glibc/busybox sh lmbench_testcode.sh", glibc_home_dir.clone()).await;
-        command(
-            "/glibc/busybox sh /glibc/libcbench_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
-        command(
-            "/glibc/busybox sh busybox_testcode.sh",
-            glibc_home_dir.clone(),
-        )
-        .await;
+
 
         //command("/musl/busybox sh run-dynamic-all.sh", home_dir.clone()).await;
         //command("/musl/busybox sh run-static-all.sh", home_dir.clone()).await;
