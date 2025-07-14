@@ -592,30 +592,51 @@ impl UserTaskContainer {
     pub async fn sys_sigreturn(&self) -> SysResult {
         debug!("sys_sigreturn @ task_id: {}", self.tid);
         
-        // 获取当前栈指针，它应该指向SignalUserContext
+        // 获取当前栈指针和返回地址
         let cx_ref = self.task.force_cx_ref();
         let sp = cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SP];
+        let ra = cx_ref[polyhal_trap::trapframe::TrapFrameArgs::RA];
+        #[cfg(not(target_arch = "riscv64"))]
+        let arg2 = cx_ref[polyhal_trap::trapframe::TrapFrameArgs::ARG2];
         
-        debug!("sys_sigreturn: restoring context from sp: {:#x}", sp);
+        #[cfg(target_arch = "riscv64")]
+        let uctx_ptr_calc = {
+            use core::mem::size_of;
+            use crate::syscall::types::signal::SigInfo;
+            // RISC-V Linux 内核在发送信号时，将整个 `rt_sigframe` 放在 sp 处：
+            // | trampoline(16B) | siginfo (128B) | ucontext |
+            // tramp_sp == sp
+            // 因此 ucontext 的地址 = sp + 16 + sizeof(siginfo)
+            sp + 16 + size_of::<SigInfo>()
+        };
         
-        // 修复地址范围验证：使用更合理的地址范围而不是硬编码
+        debug!("sys_sigreturn: sp={:#x}, ra={:#x}", sp, ra);
+        
         // 基础的地址合理性检查：避免明显无效的地址
-        if sp < 0x1000 || sp >= 0x800000000000 {
+        if sp < 0x1000 || sp >= 0x8000_0000_0000 {
             warn!("Invalid signal context stack pointer: {:#x}", sp);
             return Err(Errno::EFAULT);
         }
         
         use crate::utils::useref::UserRef;
-        use crate::syscall::types::signal::SignalUserContext;
+        use crate::syscall::types::signal::{SignalUserContext, SigInfo};
+        use core::mem::size_of;
+        
+        #[cfg(target_arch = "riscv64")]
+        let uctx_sp = uctx_ptr_calc;
+        #[cfg(not(target_arch = "riscv64"))]
+        let uctx_sp = arg2;
+        
+        debug!("sys_sigreturn: SignalUserContext at {:#x}", uctx_sp);
         
         // 验证页面是否可访问
-        if let None = self.task.page_table.translate(polyhal::VirtAddr::from(sp)) {
-            warn!("Signal context page at {:#x} is not mapped", sp);
+        if let None = self.task.page_table.translate(polyhal::VirtAddr::from(uctx_sp)) {
+            warn!("Signal context page at {:#x} is not mapped", uctx_sp);
             return Err(Errno::EFAULT);
         }
         
-        // 从栈中获取保存的信号上下文
-        let signal_ctx: &SignalUserContext = UserRef::<SignalUserContext>::from(sp).get_ref();
+        // 从正确的位置获取保存的信号上下文
+        let signal_ctx: &SignalUserContext = UserRef::<SignalUserContext>::from(uctx_sp).get_ref();
         
         // 恢复信号掩码
         self.task.tcb.write().sigmask = signal_ctx.sig_mask;
@@ -625,10 +646,6 @@ impl UserTaskContainer {
         
         // 恢复PC
         cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SEPC] = signal_ctx.pc();
-        
-        // 恢复栈指针到信号处理前的位置
-        // 从SignalUserContext中恢复原始栈指针
-        // 注意：我们应该从保存的上下文中恢复栈指针，而不是计算偏移
         
         debug!("sys_sigreturn: restored PC to {:#x}, SP to {:#x}", 
                signal_ctx.pc(), cx_ref[polyhal_trap::trapframe::TrapFrameArgs::SP]);

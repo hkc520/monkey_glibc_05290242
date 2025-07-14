@@ -90,26 +90,28 @@ cfg_if! {
             pub stack: SignalStack,    // 2
             pub sig_mask: SigProcMask, // 5
             pub _pad: [u64; 16],       // mask
-            // pub context: Context,       // pc offset = 22 - 6=16
-            pub gregs: [usize; 32],
+            pub pc: usize,             // PC寄存器单独存储
+            pub gregs: [usize; 32],    // 通用寄存器x0-x31
             pub fpstate: [usize; 66],
         }
 
         impl SignalUserContext {
             pub fn pc(&self) -> usize {
-                self.gregs[0]
+                self.pc
             }
 
             pub fn set_pc(&mut self, v: usize) {
-                self.gregs[0] = v;
+                self.pc = v;
             }
 
             pub fn store_ctx(&mut self, ctx: &TrapFrame) {
                 self.gregs = ctx.x;
+                self.pc = ctx.sepc;  // 单独存储PC
             }
 
             pub fn restore_ctx(&self, ctx: &mut TrapFrame) {
                 ctx.x = self.gregs;
+                ctx.sepc = self.pc;  // 单独恢复PC
             }
         }
     } else if #[cfg(target_arch = "aarch64")] {
@@ -180,6 +182,26 @@ cfg_if! {
             pub fn restore_ctx(&self, ctx: &mut TrapFrame) {
                 ctx.regs = self.gregs;
             }
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct SigInfo {
+    pub si_signo: i32,
+    pub si_errno: i32,
+    pub si_code: i32,
+    pub _pad: [u8; 116], // 填充到128字节，与glibc期待的大小一致
+}
+
+impl Default for SigInfo {
+    fn default() -> Self {
+        Self {
+            si_signo: 0,
+            si_errno: 0,
+            si_code: 0,
+            _pad: [0; 116],
         }
     }
 }

@@ -45,29 +45,32 @@ pub fn user_cow_int(task: Arc<UserTask>, cx_ref: &mut TrapFrame, vaddr: VirtAddr
         let finded = area.mtrackers.iter_mut().find(|x| x.vaddr == vaddr.floor());
         let ppn = match finded {
             Some(map_track) => {
-                if area.mtype == MemType::Shared {
-                    task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
-                    return;
-                }
-                debug!("strong count: {}", Arc::strong_count(&map_track.tracker));
-                if Arc::strong_count(&map_track.tracker) > 1 {
-                    let src = map_track.tracker.0;
-                    let dst = match frame_alloc() {
-                        Some(frame) => frame,
-                        None => {
-                            warn!("Frame allocation failed during COW copy");
-                            task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
-                            return;
+                // 对于共享内存和共享文件，允许写入操作
+                if area.mtype == MemType::Shared || area.mtype == MemType::ShareFile {
+                    // 共享内存/文件可以直接写入，不需要COW
+                    debug!("Shared memory/file write access at {:#x}", vaddr.raw());
+                    map_track.tracker.0
+                } else {
+                    debug!("strong count: {}", Arc::strong_count(&map_track.tracker));
+                    if Arc::strong_count(&map_track.tracker) > 1 {
+                        let src = map_track.tracker.0;
+                        let dst = match frame_alloc() {
+                            Some(frame) => frame,
+                            None => {
+                                warn!("Frame allocation failed during COW copy");
+                                task.tcb.write().signal.add_signal(SignalFlags::SIGSEGV);
+                                return;
+                            }
+                        };
+                        unsafe {
+                            dst.0
+                                .get_mut_ptr::<u8>()
+                                .copy_from_nonoverlapping(src.get_ptr(), PAGE_SIZE);
                         }
-                    };
-                    unsafe {
-                        dst.0
-                            .get_mut_ptr::<u8>()
-                            .copy_from_nonoverlapping(src.get_ptr(), PAGE_SIZE);
+                        map_track.tracker = Arc::new(dst);
                     }
-                    map_track.tracker = Arc::new(dst);
+                    map_track.tracker.0
                 }
-                map_track.tracker.0
             }
             None => {
                 // Check memory availability before allocation
@@ -409,6 +412,10 @@ impl UserTaskContainer {
             let syscall_id = cx_ref[TrapFrameArgs::SYSCALL];
 
             if syscall_id == Sysno::rt_sigreturn.id() as _ {
+                // 执行rt_sigreturn系统调用来恢复信号上下文
+                let result = self.sys_sigreturn().await
+                    .map_or_else(|e| -e.into_raw() as isize, |x| x as isize) as usize;
+                cx_ref[TrapFrameArgs::RET] = result;
                 return UserTaskControlFlow::Break;
             }
 

@@ -7,7 +7,7 @@ use crate::user::UserTaskContainer;
 use crate::utils::time::{current_nsec, current_timespec};
 use crate::utils::useref::UserRef;
 use alloc::sync::Arc;
-use alloc::vec; // 修复：移除重复的Arc导入
+use alloc::vec::{self, Vec}; // 修复：移除重复的Arc导入并添加Vec
 use bit_field::BitArray;
 use core::cmp;
 use executor::yield_now;
@@ -100,13 +100,54 @@ impl UserTaskContainer {
     }
 
     pub async fn sys_mkdir_at(&self, dir_fd: isize, path: UserRef<i8>, mode: usize) -> SysResult {
-        let path = path.get_cstr().map_err(|_| Errno::EINVAL)?;
+        let path_str = path.get_cstr().map_err(|_| Errno::EINVAL)?;
         debug!(
             "sys_mkdir_at @ dir_fd: {}, path: {}, mode: {}",
-            dir_fd as isize, path, mode
+            dir_fd as isize, path_str, mode
         );
-        self.task
-            .fd_open(dir_fd, path, OpenFlags::O_DIRECTORY | OpenFlags::O_CREAT)?;
+
+        // 分割多级目录，逐层创建
+        let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
+        if components.is_empty() {
+            // 对于尝试 mkdir("/") 的情况，应返回 EEXIST
+            return Err(Errno::EEXIST);
+        }
+
+        // 处理绝对路径起始点
+        let mut current_fd: isize = if path_str.starts_with('/') {
+            // 打开根目录作为起始目录，不带 O_CREAT，保证存在即可
+            let root_file = self.task.fd_open(AT_CWD, "/", OpenFlags::O_DIRECTORY)?;
+            let root_fd = self.task.alloc_fd().ok_or(Errno::EMFILE)?;
+            self.task.set_fd(root_fd, Arc::new(root_file));
+            root_fd as isize
+        } else {
+            dir_fd
+        };
+
+        for (idx, comp) in components.iter().enumerate() {
+            // 对每一层尝试打开，若不存在则创建
+            let create_flag = OpenFlags::O_DIRECTORY | OpenFlags::O_CREAT;
+            let flags = if idx + 1 == components.len() {
+                // 最后一层或单层路径：按照传入 mode 创建
+                create_flag
+            } else {
+                // 中间目录：也使用同样标志
+                create_flag
+            };
+
+            match self.task.fd_open(current_fd, comp, flags.clone()) {
+                Ok(file) => {
+                    // 更新 current_fd 指向新打开的目录
+                    let new_fd = self.task.alloc_fd().ok_or(Errno::EMFILE)?;
+                    self.task.set_fd(new_fd, Arc::new(file));
+                    current_fd = new_fd as isize;
+                }
+                Err(e) => {
+                    warn!("mkdir_at: failed to open/create component {}: {:?}", comp, e);
+                    return Err(e);
+                }
+            }
+        }
         Ok(0)
     }
 

@@ -5,7 +5,7 @@ use log::debug;
 use polyhal_trap::trapframe::TrapFrameArgs;
 use signal::SignalFlags;
 
-use crate::syscall::types::signal::SignalUserContext;
+use crate::syscall::types::signal::{SignalUserContext, SigInfo};
 use crate::tasks::{current_user_task, UserTaskControlFlow};
 use crate::utils::useref::UserRef;
 use polyhal::VirtAddr;
@@ -30,10 +30,10 @@ if signal == SignalFlags::SIGSEGV {
         warn!("SIGNAL_DEBUG: SIGSEGV received - checking memory layout");  
         let pcb = self.task.pcb.lock();  
         warn!("SIGNAL_DEBUG: Task has {} memory areas", pcb.memset.len());  
-        for (i, area) in pcb.memset.iter().enumerate() {  
-            warn!("  Area {}: start={:#x}, end={:#x}, type={:?}",   
-                i, area.start, area.start + area.len, area.mtype);  
-        }  
+        //for (i, area) in pcb.memset.iter().enumerate() {  
+            //warn!("  Area {}: start={:#x}, end={:#x}, type={:?}",   
+                //i, area.start, area.start + area.len, area.mtype);  
+        //}  
         drop(pcb);  
     }  
         debug!(
@@ -153,6 +153,12 @@ if signal == SignalFlags::SIGSEGV {
             warn!("SIGCHLD protection: Using default ignore behavior to avoid crashes");
             return;
         }
+        
+        // 额外的SIGCHLD保护：如果glibc设置了SIGCHLD处理器，强制忽略
+        if signal == SignalFlags::SIGCHLD && sigaction.handler != 0 && sigaction.handler != 1 {
+            warn!("SIGCHLD handler detected but forcing ignore to prevent hangs");
+            return;
+        }
 
         info!(
             "handle signal: {:?} task: {}",
@@ -167,16 +173,26 @@ if signal == SignalFlags::SIGSEGV {
         let store_cx = cx_ref.clone();
         self.task.tcb.write().sigmask = sigaction.mask;
 
-        // alloc space for SignalUserContext at stack and align with 16 bytes.
-        let sp = (cx_ref[TrapFrameArgs::SP] - 128 - size_of::<SignalUserContext>()) / 16 * 16;
+        // alloc space for SigInfo + SignalUserContext at stack and align with 16 bytes.
+        let current_sp = cx_ref[TrapFrameArgs::SP];
+        
+        // 计算 signal frame 大小：trampoline + siginfo_t + ucontext
+        let trampoline_size = 16; // 4 * 4 bytes
+        let frame_size = trampoline_size + size_of::<SigInfo>() + size_of::<SignalUserContext>();
+        // 额外预留 128 字节，再按 16 字节对齐
+        let sp = (current_sp - 128 - frame_size) & !0xf;
+        
+        // trampoline、siginfo 和 ucontext 的地址
+        let tramp_sp = sp;
+        let siginfo_sp = tramp_sp + trampoline_size;
+        let uctx_sp = siginfo_sp + size_of::<SigInfo>();
 
         // 修复栈指针验证逻辑：使用更灵活的验证策略
         // 确保新的栈指针在合理的范围内（不能太远离当前栈指针）
-        let current_sp = cx_ref[TrapFrameArgs::SP];
         let max_stack_allocation = 64 * 1024; // 64KB的最大栈分配
         
-        warn!("SIGNAL_DEBUG: Current SP: {:#x}, New SP: {:#x}, Difference: {:#x}", 
-              current_sp, sp, current_sp - sp);
+        warn!("SIGNAL_DEBUG: Current SP: {:#x}, Tramp: {:#x}, Siginfo: {:#x}, UCTX: {:#x}, Difference: {:#x}", 
+              current_sp, tramp_sp, siginfo_sp, uctx_sp, current_sp - sp);
         
         // 基于当前栈指针的相对验证，而不是硬编码的地址范围
         if sp >= current_sp || (current_sp - sp) > max_stack_allocation {
@@ -195,7 +211,7 @@ if signal == SignalFlags::SIGSEGV {
         let sp_valid = {
             let pcb = self.task.pcb.lock();
             pcb.memset.iter().any(|area| {
-                let in_area = area.contains(sp) && area.contains(sp + size_of::<SignalUserContext>());
+                let in_area = area.contains(siginfo_sp) && area.contains(uctx_sp + size_of::<SignalUserContext>());
                 let is_stack = matches!(area.mtype, 
                     crate::tasks::MemType::Stack | 
                     crate::tasks::MemType::Mmap
@@ -206,16 +222,30 @@ if signal == SignalFlags::SIGSEGV {
 
         if !sp_valid {
             warn!("Signal stack pointer {:#x} is not in valid memory area for task {}", 
-                sp, self.task.get_task_id());
+                siginfo_sp, self.task.get_task_id());
             return;
+        }
+
+        // 写入 siginfo_t
+        {
+            if let Some(_) = self.task.page_table.translate(VirtAddr::from(siginfo_sp)) {
+                let siginfo_ref = UserRef::<SigInfo>::from(siginfo_sp).get_mut();
+                *siginfo_ref = SigInfo::default();
+                siginfo_ref.si_signo = signal.num() as i32;
+                siginfo_ref.si_errno = 0;
+                siginfo_ref.si_code = 0;
+            } else {
+                warn!("Cannot map siginfo page at {:#x}", siginfo_sp);
+                return;
+            }
         }
 
         // 直接访问SignalUserContext，但增强错误处理
         let cx: &mut SignalUserContext = {
             // 首先检查内存页是否可访问
-            if let None = self.task.page_table.translate(VirtAddr::from(sp)) {
+            if let None = self.task.page_table.translate(VirtAddr::from(uctx_sp)) {
                 warn!("Signal stack page at {:#x} is not mapped for task {}", 
-                    sp, self.task.get_task_id());
+                    uctx_sp, self.task.get_task_id());
                 // 输出当前内存布局以便调试
                 let pcb = self.task.pcb.lock();
                 warn!("Current memory areas for task {}:", self.task.get_task_id());
@@ -229,45 +259,25 @@ if signal == SignalFlags::SIGSEGV {
             // 添加内存屏障确保之前的内存操作完成
             core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
             
-            UserRef::<SignalUserContext>::from(sp).get_mut()
+            UserRef::<SignalUserContext>::from(uctx_sp).get_mut()
         };
         // change task context to do the signal.
         let mut tcb = self.task.tcb.write();
-        cx.store_ctx(&cx_ref);
-        cx.set_pc(tcb.cx[TrapFrameArgs::SEPC]);
-        cx.sig_mask = sigaction.mask;
         
         // 保存原始PC，用于没有restorer时的返回地址
         let original_pc = tcb.cx[TrapFrameArgs::SEPC];
         
-        tcb.cx[TrapFrameArgs::SP] = sp;
+        // 保存当前上下文到SignalUserContext
+        cx.store_ctx(&cx_ref);
+        cx.set_pc(original_pc);  // 保存原始PC，而不是已经修改的PC
+        cx.sig_mask = sigaction.mask;
+        
+        // 设置新的执行上下文
+        tcb.cx[TrapFrameArgs::SP] = tramp_sp;
         tcb.cx[TrapFrameArgs::SEPC] = sigaction.handler;
         
         // 添加详细的restorer调试信息
         warn!("SIGNAL_DEBUG: restorer address for {:?}: {:#x}", signal, sigaction.restorer);
-        
-        // 修复关键问题：智能处理没有restorer的情况
-        if sigaction.restorer == 0 {
-            warn!("Signal handler for {:?} has no restorer", signal);
-            // 对于SIGUSR1/SIGUSR2等用户信号，尝试执行处理器但使用特殊的返回策略
-            match signal {
-                SignalFlags::SIGUSR1 | SignalFlags::SIGUSR2 => {
-                    warn!("User signal {:?} missing restorer, will execute handler but may not return safely", signal);
-                    // 继续执行，但设置一个标记表明这是有风险的
-                }
-                SignalFlags::SIGCHLD | SignalFlags::SIGURG | SignalFlags::SIGWINCH | SignalFlags::SIGIO => {
-                    warn!("Signal {:?} ignored due to missing restorer", signal);
-                    drop(tcb);
-                    return;
-                }
-                _ => {
-                    warn!("Critical signal {:?} missing restorer, using default action", signal);
-                    drop(tcb);
-                    self.task.exit_with_signal(signal.num());
-                    return;
-                }
-            }
-        }
         
         // 验证restorer地址是否在有效的内存区域中（仅当restorer不为0时）
         let restorer_check_passed = if sigaction.restorer != 0 {
@@ -334,15 +344,13 @@ if signal == SignalFlags::SIGSEGV {
         }
         
         // 智能设置返回地址
-        if sigaction.restorer == 0 {
+        if sigaction.restorer == 0 || sigaction.restorer < 0x1000 {
             // 对于没有restorer的情况，需要为不同架构提供不同的解决方案
             #[cfg(target_arch = "loongarch64")]
             {
                 // LoongArch64: 在用户栈上创建signal trampoline
                 // 因为LoongArch musl没有提供restorer，需要内核创建trampoline执行rt_sigreturn
-                
-                // 为trampoline代码预留空间（16字节对齐）
-                let tramp_sp = (sp - 16) & !0xf;
+                // trampoline地址已经在上面计算好了
                 
                 // LoongArch64的rt_sigreturn trampoline代码
                 // 根据LoongArch64 ABI，系统调用号通过$a7 (r11)传递
@@ -376,7 +384,47 @@ if signal == SignalFlags::SIGSEGV {
                     }
                 }
             }
-            #[cfg(not(target_arch = "loongarch64"))]
+            #[cfg(target_arch = "riscv64")]
+            {
+                // RISC-V64: 在用户栈上创建signal trampoline
+                // trampoline地址已经在上面计算好了
+                
+                // RISC-V64的rt_sigreturn trampoline代码
+                // 系统调用号通过a7寄存器传递，rt_sigreturn的系统调用号是139
+                let trampoline_code: [u32; 4] = [
+                    0x08b00893,  // li a7, 139 (系统调用号)
+                    0x00000073,  // ecall
+                    0x00000000,  // nop
+                    0x00000000,  // padding
+                ];
+                
+                // 将trampoline代码写入用户栈
+                match self.task.page_table.translate(VirtAddr::from(tramp_sp)) {
+                    Some(_) => {
+                        let tramp_ref = UserRef::<[u32; 4]>::from(tramp_sp);
+                        let tramp_slice = tramp_ref.get_mut();
+                        *tramp_slice = trampoline_code;
+                        
+                        // 设置返回地址指向trampoline
+                        tcb.cx[TrapFrameArgs::RA] = tramp_sp;
+                        
+                        // 对于restorer地址小于0x1000的情况（如glibc中的0x200），
+                        // 我们不修改SP，让信号处理器能正确访问其参数
+                        if sigaction.restorer < 0x1000 && sigaction.restorer != 0 {
+                            // 保持原有的栈指针，不修改SP
+                            warn!("SIGNAL_DEBUG: RISC-V64 - Created trampoline at {:#x}, RA set to trampoline, SP unchanged for glibc compatibility", tramp_sp);
+                        } else {
+                            // 对于restorer为0的情况，我们可以安全地修改SP
+                            warn!("SIGNAL_DEBUG: RISC-V64 - Created trampoline at {:#x}, RA set to trampoline", tramp_sp);
+                        }
+                    },
+                    None => {
+                        warn!("SIGNAL_DEBUG: RISC-V64 - Cannot map trampoline page, using original PC fallback");
+                        tcb.cx[TrapFrameArgs::RA] = original_pc;
+                    }
+                }
+            }
+            #[cfg(not(any(target_arch = "loongarch64", target_arch = "riscv64")))]
             {
                 // 其他架构：使用原始PC作为返回地址（fallback方案）
                 tcb.cx[TrapFrameArgs::RA] = original_pc;
@@ -387,8 +435,8 @@ if signal == SignalFlags::SIGSEGV {
             warn!("SIGNAL_DEBUG: Setting RA to restorer: {:#x}", sigaction.restorer);
         }
         tcb.cx[TrapFrameArgs::ARG0] = signal.num();
-        tcb.cx[TrapFrameArgs::ARG1] = 0;
-        tcb.cx[TrapFrameArgs::ARG2] = cx as *mut SignalUserContext as usize;
+        tcb.cx[TrapFrameArgs::ARG1] = siginfo_sp;
+        tcb.cx[TrapFrameArgs::ARG2] = uctx_sp;
         drop(tcb);
 
         loop {
@@ -423,9 +471,9 @@ if signal == SignalFlags::SIGSEGV {
         *cx_ref = store_cx;
         
         // 在访问SignalUserContext前再次验证内存可访问性
-        if let None = self.task.page_table.translate(VirtAddr::from(sp)) {
+        if let None = self.task.page_table.translate(VirtAddr::from(uctx_sp)) {
             warn!("Signal context page at {:#x} is no longer mapped for task {}, skipping context restore", 
-                sp, self.task.get_task_id());
+                uctx_sp, self.task.get_task_id());
             // 不尝试从信号上下文恢复，直接使用存储的上下文
             info!("Signal handling completed for task {}, returning to stored PC: {:#x}", 
                   self.task.get_task_id(), cx_ref[TrapFrameArgs::SEPC]);
